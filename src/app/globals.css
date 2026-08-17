@@ -3,123 +3,130 @@
 /*
  * Theme is driven by a single source of truth: the `data-theme` attribute on
  * <html>, always set before first paint by the inline script in layout.tsx.
- * No prefers-color-scheme rules here — one mechanism, so light and dark can
- * never disagree.
+ *
+ * Marketing chrome follows Intercom DESIGN.md exactly. Chart / sentiment
+ * colours stay a CVD-safe diverging scale (blue ↔ red) because Intercom's
+ * report green vs pink fails deuteranopia the same way conventional
+ * green ↔ red does.
  */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
-
-/* ─────────────────────────────────────────────────────────────────────────
-   Design tokens.
-
-   Chart colours are not chosen by eye. The categorical order and the
-   diverging pair below come from a palette validated with the data-viz
-   validator (lightness band, chroma floor, colour-vision-deficiency
-   separation, normal-vision separation, contrast-vs-surface).
-
-   Sentiment is a DIVERGING scale — positive/negative poles with a neutral
-   midpoint — so it uses blue ↔ red over a grey midpoint rather than the
-   conventional green ↔ red, which fails CVD separation outright
-   (green vs red measured ΔE 5.1 deutan; blue vs red measures 8.7).
-   Every sentiment colour in the UI is additionally paired with a text label,
-   so colour never carries the meaning alone.
-   ───────────────────────────────────────────────────────────────────────── */
 
 :root,
 [data-theme="light"] {
   color-scheme: light;
 
-  --plane: #f9f9f7;
-  --surface-1: #fcfcfb;
-  --surface-2: #f2f1ed;
-  --surface-3: #e9e8e2;
+  /* Intercom surfaces */
+  --plane: #f5f1ec;
+  --surface-1: #ffffff;
+  --surface-2: #ebe7e1;
+  --surface-3: #d3cec6;
 
-  --ink-1: #0b0b0b;
-  --ink-2: #52514e;
-  --ink-3: #898781;
+  --ink-1: #111111;
+  --ink-2: #626260;
+  --ink-3: #7b7b78;
+  --ink-4: #9c9fa5;
+  --on-primary: #ffffff;
 
-  --hairline: rgba(11, 11, 11, 0.1);
-  --hairline-strong: rgba(11, 11, 11, 0.18);
-  --grid: #e1e0d9;
-  --axis: #c3c2b7;
+  --hairline: #d3cec6;
+  --hairline-soft: #ebe7e1;
+  --hairline-strong: #c4bfb6;
+  --grid: #d3cec6;
+  --axis: #c4bfb6;
 
-  /* Diverging sentiment scale */
+  --fin-orange: #ff5600;
+  --brand-blue: #0007cb;
+  --inverse-canvas: #000000;
+  --inverse-ink: #ffffff;
+  --inverse-ink-muted: #9c9fa5;
+
+  /* Diverging sentiment scale — CVD-safe, not Intercom report green/red */
   --pos: #2a78d6;
-  --neu: #898781;
-  --neg: #e34948;
-  --pos-wash: rgba(42, 120, 214, 0.16);
-  --neu-wash: rgba(137, 135, 129, 0.16);
-  --neg-wash: rgba(227, 73, 72, 0.16);
+  --neu: #7b7b78;
+  --neg: #c41c1c;
+  --pos-wash: rgba(42, 120, 214, 0.14);
+  --neu-wash: rgba(123, 123, 120, 0.14);
+  --neg-wash: rgba(196, 28, 28, 0.12);
 
-  /* Categorical order — fixed, never cycled */
-  --cat-1: #2a78d6;
-  --cat-2: #eb6834;
-  --cat-3: #1baf7a;
-  --cat-4: #eda100;
-  --cat-5: #e87ba4;
-  --cat-6: #008300;
+  /* Intercom report palette — categorical / in-product charts */
+  --cat-1: #65b5ff;
+  --cat-2: #fe4c02;
+  --cat-3: #0bdf50;
+  --cat-4: #b3e01c;
+  --cat-5: #ff2067;
+  --cat-6: #03b2cb;
 
-  /* Sequential blue ramp (magnitude meters) */
-  --seq-track: #e3ebf6;
-  --seq-fill: #2a78d6;
+  --seq-track: #ebe7e1;
+  --seq-fill: #111111;
 
-  /* Status — reserved, always shipped with an icon + label */
-  --good: #0ca30c;
-  --warning: #fab219;
-  --serious: #ec835a;
-  --critical: #d03b3b;
-  --good-ink: #006300;
+  --good: #0bdf50;
+  --warning: #fe4c02;
+  --serious: #ff2067;
+  --critical: #c41c1c;
+  --good-ink: #087a2c;
 
-  --shadow-card: 0 1px 2px rgba(11, 11, 11, 0.04);
-  --shadow-pop: 0 8px 28px rgba(11, 11, 11, 0.14);
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-xxl: 24px;
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --plane: #0d0d0d;
-  --surface-1: #1a1a19;
-  --surface-2: #232322;
-  --surface-3: #2c2c2a;
+  --plane: #000000;
+  --surface-1: #313130;
+  --surface-2: #1c1c1b;
+  --surface-3: #3d3d3c;
 
   --ink-1: #ffffff;
-  --ink-2: #c3c2b7;
-  --ink-3: #898781;
+  --ink-2: #9c9fa5;
+  --ink-3: #7b7b78;
+  --ink-4: #9c9fa5;
+  --on-primary: #ffffff;
 
-  --hairline: rgba(255, 255, 255, 0.1);
-  --hairline-strong: rgba(255, 255, 255, 0.2);
-  --grid: #2c2c2a;
-  --axis: #383835;
+  --hairline: #3d3d3c;
+  --hairline-soft: #313130;
+  --hairline-strong: #4a4a48;
+  --grid: #3d3d3c;
+  --axis: #4a4a48;
 
-  --pos: #3987e5;
-  --neu: #898781;
-  --neg: #e66767;
-  --pos-wash: rgba(57, 135, 229, 0.22);
-  --neu-wash: rgba(137, 135, 129, 0.2);
-  --neg-wash: rgba(230, 103, 103, 0.22);
+  --fin-orange: #ff5600;
+  --brand-blue: #65b5ff;
+  --inverse-canvas: #313130;
+  --inverse-ink: #ffffff;
+  --inverse-ink-muted: #9c9fa5;
 
-  --cat-1: #3987e5;
-  --cat-2: #d95926;
-  --cat-3: #199e70;
-  --cat-4: #c98500;
-  --cat-5: #d55181;
-  --cat-6: #008300;
+  --pos: #65b5ff;
+  --neu: #9c9fa5;
+  --neg: #ff2067;
+  --pos-wash: rgba(101, 181, 255, 0.18);
+  --neu-wash: rgba(156, 159, 165, 0.16);
+  --neg-wash: rgba(255, 32, 103, 0.16);
 
-  --seq-track: #23303f;
-  --seq-fill: #3987e5;
+  --cat-1: #65b5ff;
+  --cat-2: #fe4c02;
+  --cat-3: #0bdf50;
+  --cat-4: #b3e01c;
+  --cat-5: #ff2067;
+  --cat-6: #03b2cb;
 
-  --good: #0ca30c;
-  --warning: #fab219;
-  --serious: #ec835a;
-  --critical: #d03b3b;
-  --good-ink: #0ca30c;
+  --seq-track: #1c1c1b;
+  --seq-fill: #ffffff;
 
-  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-pop: 0 8px 28px rgba(0, 0, 0, 0.55);
+  --good: #0bdf50;
+  --warning: #fe4c02;
+  --serious: #ff2067;
+  --critical: #ff2067;
+  --good-ink: #0bdf50;
 }
 
 @theme inline {
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --font-sans: var(--font-saans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-saans-mono), ui-monospace, monospace;
 
   --color-plane: var(--plane);
   --color-surface: var(--surface-1);
@@ -147,9 +154,98 @@
   --color-serious: var(--serious);
   --color-critical: var(--critical);
   --color-good-ink: var(--good-ink);
+  --color-fin: var(--fin-orange);
 }
 
-/* ── base ─────────────────────────────────────────────────────────────── */
+/* ── type ─────────────────────────────────────────────────────────────────── */
+
+.type-display-xl {
+  font-size: 72px;
+  font-weight: 500;
+  line-height: 1.05;
+  letter-spacing: -2px;
+}
+.type-display-lg {
+  font-size: 56px;
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -1.4px;
+}
+.type-display-md {
+  font-size: 40px;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.8px;
+}
+.type-headline {
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.5px;
+}
+.type-card-title {
+  font-size: 22px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.3px;
+}
+.type-subhead {
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: -0.2px;
+}
+.type-body-lg {
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: -0.1px;
+}
+.type-body {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.type-body-sm {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.type-caption {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+}
+.type-button {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+@media (max-width: 768px) {
+  .type-display-xl {
+    font-size: 40px;
+    letter-spacing: -0.8px;
+  }
+  .type-display-lg {
+    font-size: 32px;
+    letter-spacing: -0.6px;
+  }
+  .type-display-md {
+    font-size: 32px;
+    letter-spacing: -0.6px;
+  }
+}
+
+@media (max-width: 480px) {
+  .type-display-xl,
+  .type-display-md {
+    font-size: 32px;
+    letter-spacing: -0.6px;
+  }
+}
+
+/* ── base ─────────────────────────────────────────────────────────────────── */
 
 * {
   border-color: var(--hairline);
@@ -160,25 +256,34 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
 body {
   background: var(--plane);
   color: var(--ink-1);
   font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
 :focus-visible {
-  outline: 2px solid var(--pos);
+  outline: 2px solid var(--ink-1);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
 }
 
 ::selection {
-  background: var(--pos-wash);
+  background: var(--surface-2);
+  color: var(--ink-1);
 }
 
-/* Scrollbars that don't shout in either theme. */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--axis) transparent;
@@ -194,28 +299,190 @@ body {
   background-clip: content-box;
 }
 
-/* ── shared primitives ────────────────────────────────────────────────── */
+/* ── buttons (Intercom: 8px radius, never pill) ───────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0;
+  cursor: pointer;
+  transition:
+    background-color 160ms var(--ease-out),
+    border-color 160ms var(--ease-out),
+    color 160ms var(--ease-out),
+    transform 160ms var(--ease-out),
+    opacity 160ms var(--ease-out);
+}
+.btn:active {
+  transform: scale(0.97);
+}
+.btn:disabled {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.btn-primary {
+  background: var(--ink-1);
+  color: #ffffff;
+}
+.btn-primary:hover {
+  background: #000000;
+}
+
+[data-theme="dark"] .btn-primary {
+  color: #111111;
+}
+[data-theme="dark"] .btn-primary:hover {
+  background: #ebe7e1;
+}
+
+.btn-secondary {
+  background: var(--surface-1);
+  color: var(--ink-1);
+  border-color: var(--hairline);
+}
+.btn-secondary:hover {
+  border-color: var(--hairline-strong);
+  background: var(--surface-1);
+}
+
+.btn-tertiary {
+  background: var(--plane);
+  color: var(--ink-1);
+}
+.btn-tertiary:hover {
+  background: var(--surface-2);
+}
+
+.btn-fin {
+  background: var(--fin-orange);
+  color: var(--on-primary);
+}
+.btn-fin:hover {
+  background: #e64d00;
+}
+
+/* ── fields ───────────────────────────────────────────────────────────────── */
+
+.field {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--ink-1);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+  outline: none;
+  transition:
+    border-color 160ms var(--ease-out),
+    background-color 160ms var(--ease-out);
+}
+.field:focus {
+  border-color: var(--ink-1);
+}
+
+/* ── cards: white on cream, hairline, no shadow ───────────────────────────── */
 
 .card {
   background: var(--surface-1);
   border: 1px solid var(--hairline);
-  border-radius: 14px;
-  box-shadow: var(--shadow-card);
+  border-radius: var(--radius-lg);
+}
+
+.card-product {
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xl);
+}
+
+.login-card {
+  background: var(--surface-1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  padding: 32px;
+}
+
+.top-nav {
+  height: 56px;
+  background: var(--plane);
+  color: var(--ink-1);
 }
 
 .eyebrow {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--ink-3);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--hairline);
+  background: var(--surface-2);
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.tab-bar {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 9999px;
+  background: var(--plane);
+}
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    background-color 160ms var(--ease-out),
+    color 160ms var(--ease-out);
+}
+.tab[aria-selected="true"],
+.tab.is-active {
+  background: var(--surface-1);
+  color: var(--ink-1);
+}
+.tab:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .tabular {
   font-variant-numeric: tabular-nums;
 }
 
-/* Screen-reader-only, for the table views that back every chart. */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -231,7 +498,7 @@ body {
 @keyframes sa-rise {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -240,7 +507,7 @@ body {
 }
 
 .rise {
-  animation: sa-rise 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: sa-rise 0.4s var(--ease-out) both;
 }
 
 @keyframes sa-sweep {
@@ -252,6 +519,42 @@ body {
   }
 }
 
+.chip-btn {
+  cursor: pointer;
+  transition: transform 120ms var(--ease-out), background-color 150ms ease, border-color 150ms ease;
+}
+.chip-btn:hover {
+  background: var(--surface-1);
+  color: var(--ink-1);
+}
+.chip-btn:active {
+  transform: scale(0.97);
+}
+
+@keyframes sa-dot-live {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+}
+.sa-dot-live {
+  animation: sa-dot-live 1s linear infinite;
+}
+
+@keyframes sa-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(400%);
+  }
+}
+
 .skeleton {
   background: linear-gradient(
     90deg,
@@ -260,8 +563,8 @@ body {
     var(--surface-2) 63%
   );
   background-size: 200% 100%;
-  animation: sa-sweep 1.4s ease-in-out infinite;
-  border-radius: 8px;
+  animation: sa-sweep 1.4s linear infinite;
+  border-radius: var(--radius-md);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -274,10 +577,10 @@ body {
   }
 }
 
-/* Forced-colors / high-contrast: let the OS palette through rather than
-   fighting it, and keep chart marks outlined so shape still separates them. */
 @media (forced-colors: active) {
-  .card {
+  .card,
+  .card-product,
+  .login-card {
     border: 1px solid CanvasText;
   }
   svg [data-mark] {

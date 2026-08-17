@@ -26,6 +26,14 @@ import type {
 
 type Filter = "all" | SentimentLabel | "key";
 
+/** Split a turn into sentences so the transcript reads as sentence-level labels. */
+function splitSentences(text: string): string[] {
+  const parts = text.match(/[^.!?]+[.!?]+(?:["'”’)]+)?|[^.!?]+$/g);
+  if (!parts) return [text];
+  const trimmed = parts.map((s) => s.trim()).filter(Boolean);
+  return trimmed.length > 0 ? trimmed : [text];
+}
+
 export function TranscriptView({
   transcript,
   analysis,
@@ -123,8 +131,9 @@ export function TranscriptView({
 
   return (
     <Card
+      product
       title="Transcript with sentence-level sentiment"
-      subtitle="Each turn carries the model's label, score and reason. Click a turn on the timeline to jump here."
+      subtitle="Each sentence is labelled Positive, Neutral or Negative, with the model's reason. Click a turn on the timeline to jump here."
       bodyClassName="pt-3"
     >
       {/* filters, one row above the content */}
@@ -132,7 +141,7 @@ export function TranscriptView({
         <div
           role="tablist"
           aria-label="Filter turns by sentiment"
-          className="flex flex-wrap gap-1 rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)] p-1"
+          className="tab-bar"
         >
           {filters.map((f) => {
             const active = filter === f.key;
@@ -144,11 +153,7 @@ export function TranscriptView({
                 type="button"
                 onClick={() => setFilter(f.key)}
                 disabled={f.count === 0 && f.key !== "all"}
-                className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors disabled:opacity-40 ${
-                  active
-                    ? "bg-[var(--surface-1)] text-[var(--ink-1)] shadow-[var(--shadow-card)]"
-                    : "text-[var(--ink-2)] hover:text-[var(--ink-1)]"
-                }`}
+                className={`tab ${active ? "is-active" : ""}`}
               >
                 {f.color && (
                   <span
@@ -170,7 +175,7 @@ export function TranscriptView({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search the transcript…"
           aria-label="Search the transcript"
-          className="min-w-[160px] flex-1 rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)] px-3 py-1.5 text-[12px] text-[var(--ink-1)] outline-none transition-colors focus:border-[var(--pos)]"
+          className="field min-w-[160px] flex-1 !min-h-10 !py-2 text-[14px]"
         />
       </div>
 
@@ -186,11 +191,13 @@ export function TranscriptView({
             const role = roleByIndex.get(turn.index) ?? "other";
             const moment = momentByIndex.get(turn.index);
 
+            const sentences = splitSentences(turn.text);
+
             return (
               <li
                 key={turn.index}
                 data-turn={turn.index}
-                className="rounded-xl border border-[var(--hairline)] bg-[var(--surface-2)] px-3 py-2.5 transition-colors"
+                className="rounded-[8px] border border-[var(--hairline)] bg-[var(--plane)] px-4 py-3 transition-colors"
                 style={{
                   borderLeft: `3px solid ${SENTIMENT_COLOR[sentiment]}`,
                   background: moment ? SENTIMENT_WASH[sentiment] : undefined,
@@ -204,7 +211,7 @@ export function TranscriptView({
                     <span className="text-[12px] font-semibold text-[var(--ink-1)]">
                       {turn.speaker}
                     </span>
-                    <span className="rounded-full border border-[var(--hairline)] px-1.5 py-px text-[9px] font-medium uppercase tracking-wide text-[var(--ink-3)]">
+                    <span className="chip !px-1.5 !py-px !text-[11px]">
                       {role}
                     </span>
                   </div>
@@ -225,18 +232,37 @@ export function TranscriptView({
                     </span>
                     {(u?.confidence ?? 1) < 0.5 && (
                       <span
-                        className="rounded border border-[var(--hairline)] px-1 py-px text-[9px] uppercase tracking-wide text-[var(--ink-3)]"
+                        className="chip !px-1.5 !py-px !text-[11px]"
                         title="The model flagged this turn as hard to read."
                       >
-                        low confidence
+                        Low confidence
                       </span>
                     )}
                   </div>
                 </div>
 
-                <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--ink-1)]">
-                  {turn.text}
-                </p>
+                {sentences.length === 1 ? (
+                  <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--ink-1)]">
+                    {sentences[0]}
+                  </p>
+                ) : (
+                  <ol className="mt-2 space-y-1.5">
+                    {sentences.map((sentence, si) => (
+                      <li
+                        key={si}
+                        className="rounded-[6px] bg-[var(--surface-1)] px-3 py-2 text-[13px] leading-relaxed text-[var(--ink-1)]"
+                        style={{
+                          borderLeft: `2px solid ${SENTIMENT_COLOR[sentiment]}`,
+                        }}
+                      >
+                        <span className="mr-2 tabular text-[10px] font-semibold text-[var(--ink-3)]">
+                          {SENTIMENT_LABEL[sentiment]}
+                        </span>
+                        {sentence}
+                      </li>
+                    ))}
+                  </ol>
+                )}
 
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   {u?.emotion && u.emotion !== "—" && (
@@ -252,7 +278,7 @@ export function TranscriptView({
                 </div>
 
                 {moment && (
-                  <p className="mt-2 rounded-lg border border-[var(--hairline)] bg-[var(--surface-1)] px-2.5 py-1.5 text-[11px] text-[var(--ink-2)]">
+                  <p className="mt-2 rounded-[8px] border border-[var(--hairline)] bg-[var(--surface-1)] px-3 py-2 type-caption text-[var(--ink-2)]">
                     <span className="font-semibold text-[var(--ink-1)]">
                       ▼ {moment.label}
                     </span>

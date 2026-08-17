@@ -1,10 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
-import {
-  DEFAULT_MODEL,
-  OUTPUT_JSON_SCHEMA,
-  SYSTEM_PROMPT,
-  buildUserPrompt,
-} from "./prompt";
+import { DEFAULT_MODEL } from "./prompt";
 import {
   AiAnalysisSchema,
   type AiAnalysis,
@@ -18,14 +12,11 @@ import { verifyAnalysis, type VerificationOutcome } from "./verify";
 /**
  * Orchestration.
  *
- *   UI → n8n → Claude → quality gate      (primary; when N8N_WEBHOOK_URL is set)
- *   UI → Claude → quality gate            (fallback; identical prompt + schema)
+ *   UI → n8n → Gemini → quality gate
  *
- * Both paths run the same verification, because the gate is a property of the
- * product, not of the transport. The fallback exists so the app is runnable and
- * reviewable without standing up an n8n instance; it shares `prompt.ts`,
- * `schema.ts` and `verify.ts` with the workflow, so there is one prompt, one
- * contract and one definition of "good enough".
+ * Next.js never calls the model. The Gemini API key lives in n8n credentials.
+ * Set `N8N_WEBHOOK_URL` to the workflow webhook (or `npm run n8n:simulate` for
+ * a local double that runs the real Code stages and stubs only the HTTP call).
  */
 
 export class AnalysisError extends Error {
@@ -61,8 +52,8 @@ export function n8nConfigured(): boolean {
   return Boolean(process.env.N8N_WEBHOOK_URL);
 }
 
-function modelId(): string {
-  return process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_MODEL;
+function fallbackModelId(): string {
+  return process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
 }
 
 function buildRequestPayload(input: AnalyzeInput, retryFeedback?: string) {
@@ -91,24 +82,28 @@ function buildRequestPayload(input: AnalyzeInput, retryFeedback?: string) {
  * The retry is not "ask again and hope". The failing checks are fed back to the
  * model as specific, quoted feedback — which turns are unlabelled, which quotes
  * could not be found — so the second attempt is a correction rather than a
- * re-roll.
+ * re-roll. Both attempts still go through n8n; Next.js never calls Gemini.
  */
 export async function analyze(input: AnalyzeInput): Promise<AnalyzeOutput> {
-  const runner = n8nConfigured() ? analyzeViaN8n : analyzeDirect;
-  const pipeline: AnalysisPipeline = n8nConfigured() ? "n8n" : "direct";
+  if (!n8nConfigured()) {
+    throw new AnalysisError(
+      "N8N_WEBHOOK_URL is not set. Analysis is orchestrated through n8n (UI → n8n → Gemini), not called from Next.js. Point this at the imported workflow, or run `npm run n8n:simulate` for local plumbing.",
+      503,
+    );
+  }
 
   let feedback: string | undefined;
-  let best: { outcome: VerificationOutcome; attempt: number } | null = null;
+  let best: { outcome: VerificationOutcome; attempt: number; model: string } | null =
+    null;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-    const raw = await runner(input, feedback);
-    const outcome = verifyAnalysis(raw, input.turns, attempt);
+    const raw = await analyzeViaN8n(input, feedback);
+    const outcome = verifyAnalysis(raw.analysis, input.turns, attempt);
 
     if (!best || outcome.quality.score > best.outcome.quality.score) {
-      best = { outcome, attempt };
+      best = { outcome, attempt, model: raw.model };
     }
 
-    // Good enough, or the failure is not one a retry can fix.
     if (outcome.quality.verdict !== "fail" || !outcome.retryFeedback) break;
     if (attempt === MAX_ATTEMPTS) break;
 
@@ -121,22 +116,22 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeOutput> {
 
   return {
     analysis: best.outcome.analysis,
-    // Report the number of attempts actually made, not the winning attempt's
-    // index — hiding a retry would defeat the point of showing the gate.
     quality: { ...best.outcome.quality, attempts: feedback ? MAX_ATTEMPTS : 1 },
-    pipeline,
-    model: modelId(),
+    pipeline: "n8n",
+    model: best.model,
     missingTurns: best.outcome.missingTurns,
     phantomTurns: best.outcome.phantomTurns,
   };
 }
 
-/* ── path 1: n8n ─────────────────────────────────────────────────────────── */
+/* ── n8n ─────────────────────────────────────────────────────────────────── */
+
+type N8nAnalysis = { analysis: AiAnalysis; model: string };
 
 async function analyzeViaN8n(
   input: AnalyzeInput,
   retryFeedback?: string,
-): Promise<AiAnalysis> {
+): Promise<N8nAnalysis> {
   const url = process.env.N8N_WEBHOOK_URL as string;
   const timeoutMs = Number(process.env.N8N_TIMEOUT_MS) || 120_000;
   const payload = buildRequestPayload(input, retryFeedback);
@@ -173,11 +168,7 @@ async function analyzeViaN8n(
   const raw = await response.text();
 
   if (!response.ok) {
-    throw new AnalysisError(
-      `The n8n workflow returned ${response.status}.`,
-      502,
-      raw.slice(0, 600),
-    );
+    throw explainN8nError(response.status, raw);
   }
 
   let body: unknown;
@@ -191,116 +182,81 @@ async function analyzeViaN8n(
     );
   }
 
-  return parseAnalysis(unwrapN8nBody(body), "n8n workflow");
+  const unwrapped = unwrapN8nEnvelope(body);
+  return {
+    analysis: parseAnalysis(unwrapped.analysis, "n8n workflow"),
+    model: unwrapped.model || fallbackModelId(),
+  };
+}
+
+function explainN8nError(httpStatus: number, raw: string): AnalysisError {
+  let parsed: { error?: unknown; detail?: unknown } | null = null;
+  try {
+    parsed = JSON.parse(raw) as { error?: unknown; detail?: unknown };
+  } catch {
+    parsed = null;
+  }
+
+  const errorText = typeof parsed?.error === "string" ? parsed.error : "";
+  const detailText = typeof parsed?.detail === "string" ? parsed.detail : "";
+  const blob = `${errorText} ${detailText} ${raw}`;
+
+  if (httpStatus === 429 || /rate limited|RESOURCE_EXHAUSTED/i.test(blob)) {
+    return new AnalysisError(
+      "Gemini is rate limited. Wait a moment and try again.",
+      429,
+    );
+  }
+  if (
+    httpStatus === 503 ||
+    /high demand|UNAVAILABLE|overloaded|busy right now/i.test(blob)
+  ) {
+    return new AnalysisError(
+      "Gemini is busy right now. Wait a few seconds and try again.",
+      503,
+    );
+  }
+  if (errorText && !errorText.startsWith("{")) {
+    return new AnalysisError(errorText, httpStatus >= 400 ? httpStatus : 502);
+  }
+  return new AnalysisError(
+    "The analysis workflow failed. Try again.",
+    httpStatus >= 400 ? httpStatus : 502,
+  );
 }
 
 /**
- * Accept `{ analysis }`, a bare analysis object, or n8n's array-of-items
- * envelope — all three turn up depending on how Respond to Webhook is set.
+ * Accept `{ analysis, diagnostics }`, a bare analysis object, or n8n's
+ * array-of-items envelope — all three turn up depending on how Respond to
+ * Webhook is set.
  */
-function unwrapN8nBody(body: unknown): unknown {
+function unwrapN8nEnvelope(body: unknown): { analysis: unknown; model?: string } {
   let current = body;
   if (Array.isArray(current)) current = current[0];
   if (current && typeof current === "object") {
     const obj = current as Record<string, unknown>;
     if ("json" in obj) current = obj.json;
   }
+
   if (current && typeof current === "object") {
     const obj = current as Record<string, unknown>;
-    if ("analysis" in obj) current = obj.analysis;
+    const diagnostics =
+      obj.diagnostics && typeof obj.diagnostics === "object"
+        ? (obj.diagnostics as Record<string, unknown>)
+        : undefined;
+    const model =
+      (typeof diagnostics?.model === "string" && diagnostics.model) ||
+      (typeof obj.model === "string" && obj.model) ||
+      undefined;
+
+    if ("analysis" in obj) {
+      return { analysis: obj.analysis, model };
+    }
+    return { analysis: current, model };
   }
-  return current;
+
+  return { analysis: current };
 }
-
-/* ── path 2: direct ──────────────────────────────────────────────────────── */
-
-async function analyzeDirect(
-  input: AnalyzeInput,
-  retryFeedback?: string,
-): Promise<AiAnalysis> {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new AnalysisError(
-      "No analysis backend is configured. Set N8N_WEBHOOK_URL to route through n8n, or ANTHROPIC_API_KEY to use the direct fallback.",
-      503,
-    );
-  }
-
-  const client = new Anthropic();
-  const payload = buildRequestPayload(input, retryFeedback);
-  const model = modelId();
-
-  let message: Anthropic.Message;
-  try {
-    // Streamed: a long transcript with a per-turn output plus evidence can run
-    // past the non-streaming HTTP timeout at this max_tokens.
-    const stream = client.messages.stream({
-      model,
-      max_tokens: 32_000,
-      system: SYSTEM_PROMPT,
-      output_config: {
-        effort: "high",
-        format: {
-          type: "json_schema",
-          schema: OUTPUT_JSON_SCHEMA as unknown as Record<string, unknown>,
-        },
-      },
-      messages: [{ role: "user", content: buildUserPrompt(payload) }],
-    });
-    message = await stream.finalMessage();
-  } catch (error) {
-    if (error instanceof Anthropic.AuthenticationError) {
-      throw new AnalysisError("ANTHROPIC_API_KEY was rejected.", 502);
-    }
-    if (error instanceof Anthropic.RateLimitError) {
-      throw new AnalysisError(
-        "The model API is rate limited. Try again in a moment.",
-        429,
-      );
-    }
-    if (error instanceof Anthropic.APIError) {
-      throw new AnalysisError(
-        `The model API returned ${error.status ?? "an error"}.`,
-        502,
-        error.message,
-      );
-    }
-    throw new AnalysisError(
-      "The model request failed.",
-      502,
-      error instanceof Error ? error.message : undefined,
-    );
-  }
-
-  if (message.stop_reason === "refusal") {
-    throw new AnalysisError(
-      "The model declined to analyse this transcript.",
-      422,
-      message.stop_details?.explanation ?? undefined,
-    );
-  }
-  if (message.stop_reason === "max_tokens") {
-    throw new AnalysisError(
-      "The transcript is too long to analyse in one pass — the response was truncated. Try a shorter excerpt.",
-      413,
-    );
-  }
-
-  const textBlock = message.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    throw new AnalysisError("The model returned no analysis payload.", 502);
-  }
-
-  let json: unknown;
-  try {
-    json = JSON.parse(textBlock.text);
-  } catch {
-    throw new AnalysisError("The model returned malformed JSON.", 502);
-  }
-
-  return parseAnalysis(json, "model");
-}
-
-/* ── shared ──────────────────────────────────────────────────────────────── */
 
 function parseAnalysis(candidate: unknown, source: string): AiAnalysis {
   const parsed = AiAnalysisSchema.safeParse(candidate);

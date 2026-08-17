@@ -4,7 +4,7 @@ import { z } from "zod";
  * The analysis contract.
  *
  * Single source of truth shared by four consumers:
- *   1. the Claude prompt (src/contract/analysis-contract.mjs derives the JSON
+ *   1. the Gemini prompt (src/contract/analysis-contract.mjs derives the JSON
  *      Schema from the same field list),
  *   2. the n8n workflow (which validates model output against it),
  *   3. the verification layer (src/lib/verify.ts),

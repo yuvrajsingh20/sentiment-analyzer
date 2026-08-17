@@ -11,6 +11,8 @@
  */
 
 export const SESSION_COOKIE = "sa_session";
+export const OAUTH_STATE_COOKIE = "sa_oauth_state";
+export const OAUTH_NEXT_COOKIE = "sa_oauth_next";
 
 const encoder = new TextEncoder();
 
@@ -139,7 +141,7 @@ export async function checkCredentials(
   password: string,
 ): Promise<boolean> {
   const expectedUser = process.env.AUTH_USERNAME ?? "analyst";
-  const expectedPass = process.env.AUTH_PASSWORD ?? "analyst";
+  const expectedPass = process.env.AUTH_PASSWORD ?? "change-me";
 
   // Always run both comparisons so a wrong username and a wrong password cost
   // the same.

@@ -73,7 +73,7 @@ export function SpeakerSplit({
                   <span className="text-[13px] font-semibold text-[var(--ink-1)]">
                     {s.speaker}
                   </span>
-                  <span className="rounded-full border border-[var(--hairline)] bg-[var(--surface-2)] px-1.5 py-px text-[10px] font-medium uppercase tracking-wide text-[var(--ink-3)]">
+                  <span className="chip !px-1.5 !py-px !text-[11px]">
                     {s.role}
                   </span>
                 </div>
@@ -87,13 +87,13 @@ export function SpeakerSplit({
 
               {/* talk share */}
               <div className="mb-1.5 flex items-center gap-2">
-                <span className="w-[74px] shrink-0 text-[10px] uppercase tracking-wide text-[var(--ink-3)]">
+                <span className="eyebrow w-[74px] shrink-0 text-[var(--ink-3)]">
                   Talk share
                 </span>
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--surface-3)]">
+                <div className="h-1.5 flex-1 overflow-hidden rounded-[4px] bg-[var(--surface-2)]">
                   <div
                     data-mark
-                    className="h-full rounded-full"
+                    className="h-full rounded-[4px]"
                     style={{
                       width: `${s.talkShare * 100}%`,
                       background: "var(--seq-fill)",
@@ -107,7 +107,7 @@ export function SpeakerSplit({
 
               {/* sentiment mix */}
               <div className="flex items-center gap-2">
-                <span className="w-[74px] shrink-0 text-[10px] uppercase tracking-wide text-[var(--ink-3)]">
+                <span className="eyebrow w-[74px] shrink-0 text-[var(--ink-3)]">
                   Sentiment
                 </span>
                 <div className="relative flex-1">

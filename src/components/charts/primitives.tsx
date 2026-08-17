@@ -72,12 +72,11 @@ export function ChartTooltip({
   return (
     <div
       role="tooltip"
-      className="pointer-events-none absolute z-20 rounded-lg border border-[var(--hairline-strong)] bg-[var(--surface-1)] px-3 py-2 text-[11px] leading-relaxed text-[var(--ink-2)]"
+      className="pointer-events-none absolute z-20 rounded-[8px] border border-[var(--hairline)] bg-[var(--surface-1)] px-3 py-2 type-caption leading-relaxed text-[var(--ink-2)]"
       style={{
         left: Math.max(4, left),
         top: Math.max(4, tip.y - 12),
         width,
-        boxShadow: "var(--shadow-pop)",
       }}
     >
       {tip.content}
@@ -185,7 +184,7 @@ export function ChartTable({
         {open ? "Hide data table" : "Show data table"}
       </button>
       {open && (
-        <div className="mt-2 max-h-64 overflow-auto rounded-lg border border-[var(--hairline)]">
+        <div className="mt-2 max-h-64 overflow-auto rounded-[8px] border border-[var(--hairline)]">
           <table className="w-full border-collapse text-[11px]">
             <caption className="sr-only">{caption}</caption>
             <thead className="sticky top-0 bg-[var(--surface-2)]">

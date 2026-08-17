@@ -357,7 +357,7 @@ function TurnTooltip({
         <span className="text-[11px] font-semibold text-[var(--ink-1)]">
           Turn {turnNumber} · {speaker}
         </span>
-        <span className="text-[10px] uppercase tracking-wide text-[var(--ink-3)]">
+        <span className="type-caption text-[var(--ink-3)]">
           {role}
         </span>
       </div>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Card, Notice, ThemeToggle } from "@/components/ui";
+import { BrandLogo, Card, Notice, ThemeToggle } from "@/components/ui";
 import { TONE_COLOR, pct, titleCase } from "@/lib/display";
 import { summarise, type EvaluationOutcome } from "@/lib/evaluate";
 
@@ -77,22 +77,29 @@ export function EvaluationClient({ fixtures }: { fixtures: FixtureSummary[] }) {
 
   return (
     <div className="min-h-dvh">
-      <header className="sticky top-0 z-30 border-b border-[var(--hairline)] bg-[var(--surface-1)]/90 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-[1080px] items-center gap-3 px-4 py-3 sm:px-6">
+      <header className="sticky top-0 z-30 border-b border-[var(--hairline)] bg-[var(--plane)]">
+        <div className="mx-auto flex h-14 w-full max-w-[1080px] items-center gap-4 px-4 sm:px-6">
           <Link
             href="/dashboard"
-            className="text-[13px] font-medium text-[var(--ink-2)] transition-colors hover:text-[var(--ink-1)]"
+            aria-label="Sentiment Analyzer"
+            className="flex shrink-0 items-center gap-2.5"
           >
-            ← Dashboard
+            <BrandLogo className="h-8" alt="" />
           </Link>
-          <span className="text-[14px] font-semibold tracking-tight">Evaluation</span>
+          <Link
+            href="/dashboard"
+            className="type-body-sm text-[var(--ink-2)] transition-colors hover:text-[var(--ink-1)]"
+          >
+            Dashboard
+          </Link>
+          <span className="text-[15px] font-medium tracking-[-0.2px]">Evaluation</span>
           <div className="ml-auto">
             <ThemeToggle />
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1080px] space-y-5 px-4 py-6 sm:px-6">
+      <main className="mx-auto w-full max-w-[1080px] space-y-6 px-4 py-8 sm:px-6">
         <Card
           title="Regression harness"
           subtitle="Runs the labelled fixtures through the same pipeline the dashboard uses."
@@ -101,18 +108,17 @@ export function EvaluationClient({ fixtures }: { fixtures: FixtureSummary[] }) {
               type="button"
               onClick={runAll}
               disabled={running !== null}
-              className="rounded-lg px-3.5 py-1.5 text-[12px] font-semibold text-white transition-opacity disabled:opacity-60"
-              style={{ background: "var(--pos)" }}
+              className="btn btn-primary"
             >
               {running ? "Running…" : done ? "Run again" : "Run evaluation"}
             </button>
           }
         >
-          <div className="rounded-lg border-l-[3px] border-[var(--warning)] bg-[var(--surface-2)] px-3 py-2.5">
-            <p className="text-[12px] font-semibold text-[var(--ink-1)]">
+          <div className="rounded-[8px] border-l-[3px] border-[var(--warning)] bg-[var(--plane)] px-4 py-3">
+            <p className="text-[14px] font-medium text-[var(--ink-1)]">
               What this is, and what it is not
             </p>
-            <p className="mt-1 text-[12px] leading-relaxed text-[var(--ink-2)]">
+            <p className="mt-1 type-body-sm text-[var(--ink-2)]">
               {fixtures.length} hand-labelled transcripts is a smoke-test set, not
               a benchmark. It is far too small to support an accuracy claim, and
               the transcripts were written alongside the prompt, so it cannot
@@ -122,7 +128,7 @@ export function EvaluationClient({ fixtures }: { fixtures: FixtureSummary[] }) {
               getting the direction of an obvious call right, and never citing a
               quote that is not in the transcript.
             </p>
-            <p className="mt-2 text-[12px] leading-relaxed text-[var(--ink-2)]">
+            <p className="mt-2 type-body-sm text-[var(--ink-2)]">
               Grounding, coverage and abstention counts are{" "}
               <strong className="font-semibold text-[var(--ink-1)]">measured</strong>{" "}
               by the verification layer and are meaningful on any transcript.
@@ -236,7 +242,7 @@ function FixtureCard({
           <span className="text-[11px] font-medium text-[var(--ink-3)]">Running…</span>
         ) : outcome?.ok ? (
           <span
-            className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
+            className="inline-flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1 text-[13px] font-medium"
             style={{
               borderColor:
                 passed === total ? TONE_COLOR.good : TONE_COLOR.warning,
@@ -256,7 +262,7 @@ function FixtureCard({
           </span>
         ) : outcome ? (
           <span
-            className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
+            className="inline-flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1 text-[13px] font-medium"
             style={{ borderColor: TONE_COLOR.critical }}
           >
             <span aria-hidden style={{ color: TONE_COLOR.critical }}>
@@ -348,7 +354,7 @@ function Stat({
   tone?: "good" | "warning" | "critical";
 }) {
   return (
-    <div className="rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)] px-3 py-2.5">
+    <div className="rounded-[8px] border border-[var(--hairline)] bg-[var(--plane)] px-4 py-3">
       <p className="eyebrow leading-tight">{label}</p>
       <p
         className="tabular mt-1 text-[18px] font-semibold leading-none"

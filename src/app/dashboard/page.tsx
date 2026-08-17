@@ -5,14 +5,27 @@ import { DashboardClient } from "./dashboard-client";
 
 export const metadata = { title: "Dashboard — Sentiment Analyzer" };
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ id?: string }>;
+}) {
   const store = await cookies();
   const username = await verifySession(store.get(SESSION_COOKIE)?.value);
-  if (!username) redirect("/login");
+  if (!username) redirect("/login?next=/dashboard");
 
-  // Surfaced in the header so it is obvious which orchestration path produced
-  // a result — the dashboard should never be ambiguous about that.
+  const { id } = await searchParams;
+  const initialId = id && /^[a-zA-Z0-9_-]+$/.test(id) ? id : undefined;
+
+  // The dashboard chip is honest: n8n is required. "direct" only appears on
+  // historical records saved before the Gemini/n8n-only cutover.
   const pipeline = process.env.N8N_WEBHOOK_URL ? "n8n" : "direct";
 
-  return <DashboardClient username={username} configuredPipeline={pipeline} />;
+  return (
+    <DashboardClient
+      username={username}
+      configuredPipeline={pipeline}
+      initialId={initialId}
+    />
+  );
 }

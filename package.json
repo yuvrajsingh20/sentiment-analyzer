@@ -2,7 +2,7 @@
   "name": "sentiment-analyzer",
   "version": "1.0.0",
   "private": true,
-  "description": "Upload a call transcript, orchestrate analysis through n8n + Claude, and read the result as a KPI dashboard.",
+  "description": "Upload a call transcript, orchestrate analysis through n8n + Gemini, and read the result as a KPI dashboard.",
   "scripts": {
     "dev": "next dev",
     "build": "node scripts/build-n8n-workflow.mjs && next build",
@@ -16,7 +16,7 @@
     "n8n:simulate": "node scripts/simulate-n8n.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.117.1",
+    "mongodb": "^7.5.0",
     "next": "15.5.4",
     "react": "19.1.1",
     "react-dom": "19.1.1",

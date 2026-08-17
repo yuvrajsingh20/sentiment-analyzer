@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 
 /**
- * Gate everything except the login screen and the auth endpoints.
+ * Gate everything except the login/signup screens and the auth endpoints.
  *
  * Page requests redirect to /login (carrying `next` so the user lands back
  * where they were); API requests get a 401 JSON body, because a fetch caller
@@ -12,8 +12,9 @@ export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   const isAuthEndpoint = pathname.startsWith("/api/auth/");
-  const isLogin = pathname === "/login";
-  if (isAuthEndpoint || isLogin) return NextResponse.next();
+  const isPublicPage =
+    pathname === "/" || pathname === "/login" || pathname === "/signup";
+  if (isAuthEndpoint || isPublicPage) return NextResponse.next();
 
   const username = await verifySession(
     request.cookies.get(SESSION_COOKIE)?.value,
@@ -45,6 +46,6 @@ export const config = {
    * "analyse" the HTML.
    */
   matcher: [
-    "/((?!_next/static|_next/image|samples/|favicon.ico|icon.svg|robots.txt).*)",
+    "/((?!_next/static|_next/image|samples/|logo.png|favicon.ico|icon.svg|icon.png|robots.txt).*)",
   ],
 };

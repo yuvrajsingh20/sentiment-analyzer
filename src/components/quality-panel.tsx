@@ -56,18 +56,23 @@ export function QualityPanel({ quality }: { quality: QualityReport }) {
       title="Analysis quality"
       subtitle="Automated checks run on the model's output before it reached this page."
       aside={
-        <span
-          className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold"
-          style={{ borderColor: TONE_COLOR[verdict.tone], color: "var(--ink-1)" }}
-        >
-          <span aria-hidden style={{ color: TONE_COLOR[verdict.tone] }}>
-            {quality.verdict === "pass" ? "✓" : quality.verdict === "warn" ? "▲" : "✕"}
+        <span className="flex flex-wrap items-center justify-end gap-2">
+          <span className="tabular text-[13px] font-medium text-[var(--ink-2)]">
+            Score {pct(quality.score)}
           </span>
-          {verdict.label}
+          <span
+            className="inline-flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1 text-[13px] font-medium"
+            style={{ borderColor: TONE_COLOR[verdict.tone], color: "var(--ink-1)" }}
+          >
+            <span aria-hidden style={{ color: TONE_COLOR[verdict.tone] }}>
+              {quality.verdict === "pass" ? "✓" : quality.verdict === "warn" ? "▲" : "✕"}
+            </span>
+            {verdict.label}
+          </span>
         </span>
       }
     >
-      <p className="text-[12px] leading-relaxed text-[var(--ink-2)]">
+      <p className="type-body-sm text-[var(--ink-2)]">
         {verdict.blurb}
         {quality.attempts > 1 && (
           <>
@@ -82,7 +87,13 @@ export function QualityPanel({ quality }: { quality: QualityReport }) {
         )}
       </p>
 
-      <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+      <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+        <Rate
+          label="Quality score"
+          value={quality.score}
+          hint="composite of the checks below"
+          scale="score"
+        />
         <Rate
           label="Turn coverage"
           value={c.turnCoverage}
@@ -134,7 +145,7 @@ export function QualityPanel({ quality }: { quality: QualityReport }) {
               </span>
               <span className="text-[var(--ink-2)]">
                 {issue.message}
-                <code className="ml-1.5 rounded bg-[var(--surface-2)] px-1 py-px font-mono text-[10px] text-[var(--ink-3)]">
+                <code className="ml-1.5 rounded-[4px] bg-[var(--plane)] px-1 py-px font-mono text-[11px] text-[var(--ink-3)]">
                   {issue.code}
                 </code>
               </span>
@@ -157,24 +168,37 @@ function Rate({
   label,
   value,
   hint,
+  scale = "check",
 }: {
   label: string;
   value: number;
   hint: string;
+  scale?: "check" | "score";
 }) {
-  const tone: RiskTone = value >= 0.99 ? "good" : value >= 0.9 ? "warning" : "critical";
+  const tone: RiskTone =
+    scale === "score"
+      ? value >= 0.8
+        ? "good"
+        : value >= 0.6
+          ? "warning"
+          : "critical"
+      : value >= 0.99
+        ? "good"
+        : value >= 0.9
+          ? "warning"
+          : "critical";
   return (
-    <div className="rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)] px-3 py-2.5">
+    <div className="rounded-[8px] border border-[var(--hairline)] bg-[var(--plane)] px-4 py-3">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-[11px] font-medium text-[var(--ink-2)]">{label}</span>
         <span className="tabular text-[14px] font-semibold text-[var(--ink-1)]">
           {pct(value, value >= 0.995 || value === 0 ? 0 : 1)}
         </span>
       </div>
-      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-[var(--surface-3)]">
+      <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-[4px] bg-[var(--surface-2)]">
         <div
           data-mark
-          className="h-full rounded-full"
+          className="h-full rounded-[4px]"
           style={{ width: `${value * 100}%`, background: TONE_COLOR[tone] }}
         />
       </div>
@@ -196,9 +220,7 @@ function Count({
 }) {
   return (
     <div>
-      <dt className="text-[10px] uppercase tracking-wide text-[var(--ink-3)]">
-        {label}
-      </dt>
+      <dt className="eyebrow text-[var(--ink-3)]">{label}</dt>
       <dd
         className="tabular text-[14px] font-semibold"
         style={{ color: bad ? TONE_COLOR.critical : "var(--ink-1)" }}

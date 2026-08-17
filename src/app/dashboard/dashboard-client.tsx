@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -8,7 +8,9 @@ import { EmotionBars } from "@/components/charts/emotion-bars";
 import { SentimentDonut } from "@/components/charts/sentiment-donut";
 import { SentimentTimeline } from "@/components/charts/sentiment-timeline";
 import { SpeakerSplit } from "@/components/charts/speaker-split";
+import { HistoryList } from "@/components/history-list";
 import {
+  CallSnapshot,
   CoachingPanel,
   CompliancePanel,
   FollowUpsPanel,
@@ -20,34 +22,109 @@ import { KpiBoard } from "@/components/kpi-board";
 import { QualityPanel } from "@/components/quality-panel";
 import { TranscriptView } from "@/components/transcript-view";
 import { AnalysingState, UploadPanel } from "@/components/upload-panel";
-import { Card, ThemeToggle } from "@/components/ui";
+import { BrandLogo, Card, ThemeToggle } from "@/components/ui";
+import { WorkflowTimeline } from "@/components/workflow-popover";
 import { formatTimestamp } from "@/lib/display";
+import type { HistorySummary } from "@/lib/history-types";
+import { useN8nRun } from "@/lib/n8n-stages";
 import { classifySpeakers } from "@/lib/transcript";
 import type { AnalysisResult, SentimentLabel, SpeakerRole } from "@/lib/schema";
 
 /**
  * The dashboard.
  *
- * Reading order is deliberate: verdict and distribution first (what happened),
- * then the timeline (how it moved), then the KPI board (what it means), then
- * the transcript (check it yourself), then the quality gate (should you trust
- * any of this). A reviewer who reads top to bottom ends on the caveats rather
- * than starting there.
+ * Reading order is deliberate: required outputs first (overall sentiment,
+ * sentence-level labels, call KPIs), then the extra charts and narrative,
+ * then the quality gate.
  */
 
 export function DashboardClient({
   username,
   configuredPipeline,
+  initialId,
 }: {
   username: string;
   configuredPipeline: "n8n" | "direct";
+  initialId?: string;
 }) {
   const router = useRouter();
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [history, setHistory] = useState<HistorySummary[]>([]);
+  const [historyId, setHistoryId] = useState<string | null>(initialId ?? null);
   const [busy, setBusy] = useState(false);
   const [pendingName, setPendingName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [focusTurn, setFocusTurn] = useState<number | null>(null);
+
+  const setUrl = useCallback(
+    (id: string | null) => {
+      const url = id ? `/dashboard?id=${encodeURIComponent(id)}` : "/dashboard";
+      router.replace(url, { scroll: false });
+    },
+    [router],
+  );
+
+  const refreshHistory = useCallback(async () => {
+    try {
+      const response = await fetch("/api/history");
+      if (response.status === 401) {
+        router.replace("/login?next=/dashboard");
+        return;
+      }
+      const body = (await response.json().catch(() => ({}))) as {
+        items?: HistorySummary[];
+      };
+      setHistory(Array.isArray(body.items) ? body.items : []);
+    } catch {
+      /* listing is best-effort — a failed history fetch must not block analyse */
+    }
+  }, [router]);
+
+  const openHistory = useCallback(
+    async (id: string) => {
+      const known = history.find((item) => item.id === id);
+      setBusy(true);
+      setError(null);
+      setPendingName(known?.fileName ?? "saved analysis");
+      try {
+        const response = await fetch(`/api/history/${id}`);
+        if (response.status === 401) {
+          router.replace("/login?next=/dashboard");
+          return;
+        }
+        const body = (await response.json().catch(() => ({}))) as {
+          result?: AnalysisResult;
+          error?: string;
+        };
+        if (!response.ok || !body.result) {
+          setError(body.error ?? "That saved analysis could not be opened.");
+          setResult(null);
+          setHistoryId(null);
+          setUrl(null);
+          return;
+        }
+        setResult(body.result);
+        setHistoryId(id);
+        setUrl(id);
+        setFocusTurn(null);
+      } catch {
+        setError("Could not reach the server. Check your connection and retry.");
+      } finally {
+        setBusy(false);
+      }
+    },
+    [history, router, setUrl],
+  );
+
+  useEffect(() => {
+    void refreshHistory();
+  }, [refreshHistory]);
+
+  useEffect(() => {
+    if (initialId) void openHistory(initialId);
+    // Open once from the URL; later navigation is driven by user actions.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const analyze = useCallback(
     async ({ text, fileName }: { text: string; fileName: string }) => {
@@ -64,33 +141,35 @@ export function DashboardClient({
         });
 
         if (response.status === 401) {
-          router.replace("/login");
+          router.replace("/login?next=/dashboard");
           return;
         }
 
         const body = (await response.json().catch(() => ({}))) as {
           result?: AnalysisResult;
+          historyId?: string;
           error?: string;
           detail?: string;
         };
 
         if (!response.ok || !body.result) {
-          setError(
-            [body.error ?? `The server returned ${response.status}.`, body.detail]
-              .filter(Boolean)
-              .join(" — "),
-          );
+          setError(body.error ?? `The server returned ${response.status}.`);
           return;
         }
 
         setResult(body.result);
+        if (body.historyId) {
+          setHistoryId(body.historyId);
+          setUrl(body.historyId);
+          void refreshHistory();
+        }
       } catch {
         setError("Could not reach the server. Check your connection and retry.");
       } finally {
         setBusy(false);
       }
     },
-    [router],
+    [refreshHistory, router, setUrl],
   );
 
   async function signOut() {
@@ -99,7 +178,27 @@ export function DashboardClient({
     router.refresh();
   }
 
+  function resetToUpload() {
+    setResult(null);
+    setError(null);
+    setHistoryId(null);
+    setFocusTurn(null);
+    setUrl(null);
+  }
+
+  async function removeHistory(id: string) {
+    try {
+      await fetch(`/api/history/${id}`, { method: "DELETE" });
+    } catch {
+      /* ignore — the list refresh will show whether it actually went */
+    }
+    if (historyId === id) resetToUpload();
+    void refreshHistory();
+  }
+
   const jump = useCallback((turnIndex: number) => setFocusTurn(turnIndex), []);
+  const liveAnalyze = busy && pendingName !== "saved analysis";
+  const n8nRun = useN8nRun(liveAnalyze);
 
   return (
     <div className="min-h-dvh">
@@ -107,20 +206,31 @@ export function DashboardClient({
         username={username}
         configuredPipeline={configuredPipeline}
         result={result}
-        onReset={() => {
-          setResult(null);
-          setError(null);
-        }}
+        live={liveAnalyze}
+        n8nActive={n8nRun.active}
+        onReset={resetToUpload}
         onSignOut={signOut}
       />
 
-      <main className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6">
+      <main className="mx-auto w-full max-w-[1280px] px-4 py-8 sm:px-6">
         {busy ? (
           <AnalysingState fileName={pendingName} />
         ) : result ? (
           <Results result={result} focusTurn={focusTurn} onJump={jump} onClearFocus={() => setFocusTurn(null)} />
         ) : (
-          <UploadPanel onAnalyze={analyze} busy={busy} error={error} />
+          <div>
+            <UploadPanel onAnalyze={analyze} busy={busy} error={error} />
+            <section className="mx-auto mt-12 w-full max-w-[880px]">
+              <p className="eyebrow">History</p>
+              <h2 className="mt-2 type-headline">Previous analyses</h2>
+              <HistoryList
+                items={history}
+                activeId={historyId}
+                onOpen={(id) => void openHistory(id)}
+                onDelete={(id) => void removeHistory(id)}
+              />
+            </section>
+          </div>
         )}
       </main>
     </div>
@@ -133,62 +243,69 @@ function Header({
   username,
   configuredPipeline,
   result,
+  live,
+  n8nActive,
   onReset,
   onSignOut,
 }: {
   username: string;
   configuredPipeline: "n8n" | "direct";
   result: AnalysisResult | null;
+  live: boolean;
+  n8nActive: number;
   onReset: () => void;
   onSignOut: () => void;
 }) {
   const pipeline = result?.meta.pipeline ?? configuredPipeline;
 
   return (
-    <header className="sticky top-0 z-30 border-b border-[var(--hairline)] bg-[var(--surface-1)]/90 backdrop-blur">
-      <div className="mx-auto flex w-full max-w-[1440px] flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 sm:px-6">
-        <Link href="/dashboard" className="flex items-center gap-2.5">
-          <span
-            aria-hidden
-            className="grid h-8 w-8 place-items-center rounded-lg"
-            style={{ background: "var(--pos)" }}
-          >
-            <svg viewBox="0 0 32 32" className="h-5 w-5" aria-hidden>
-              <path
-                d="M7 21l5-7 4 4 4-8 5 6"
-                stroke="white"
-                strokeWidth="2.8"
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </span>
-          <span className="text-[14px] font-semibold tracking-tight">
+    <header className="sticky top-0 z-30 border-b border-[var(--hairline)] bg-[var(--plane)]">
+      <div className="mx-auto flex h-14 w-full max-w-[1280px] items-center gap-4 px-4 sm:px-6">
+        <Link
+          href="/dashboard"
+          aria-label="Sentiment Analyzer"
+          className="flex shrink-0 items-center gap-2.5"
+        >
+          <BrandLogo className="h-8" alt="" />
+          <span className="hidden text-[15px] font-medium tracking-[-0.2px] sm:inline">
             Sentiment Analyzer
           </span>
         </Link>
 
-        <span
-          title={
-            pipeline === "n8n"
-              ? "Analysis is orchestrated through the n8n workflow."
-              : "N8N_WEBHOOK_URL is unset — using the direct fallback path with the identical prompt and schema."
-          }
-          className="inline-flex items-center gap-1.5 rounded-full border border-[var(--hairline)] bg-[var(--surface-2)] px-2 py-px text-[10px] font-semibold uppercase tracking-wide text-[var(--ink-3)]"
-        >
+        <nav className="hidden items-center gap-6 md:flex">
+          <Link
+            href="/dashboard"
+            className="type-body-sm font-medium text-[var(--ink-1)]"
+            onClick={onReset}
+          >
+            Dashboard
+          </Link>
+          <Link
+            href="/evaluation"
+            className="type-body-sm text-[var(--ink-2)] transition-colors hover:text-[var(--ink-1)]"
+          >
+            Evaluation
+          </Link>
+        </nav>
+
+        <span className="chip hidden sm:inline-flex">
           <span
             aria-hidden
-            className="h-1.5 w-1.5 rounded-full"
+            className={`h-1.5 w-1.5 rounded-full ${live ? "sa-dot-live" : ""}`}
             style={{
-              background: pipeline === "n8n" ? "var(--good)" : "var(--warning)",
+              background:
+                pipeline === "n8n"
+                  ? live
+                    ? "var(--ink-1)"
+                    : "var(--good)"
+                  : "var(--warning)",
             }}
           />
-          {pipeline === "n8n" ? "UI → n8n → AI" : "UI → AI (fallback)"}
+          {live ? "n8n running" : pipeline === "n8n" ? "n8n → Gemini" : "n8n not configured"}
         </span>
 
         {result && (
-          <span className="hidden min-w-0 items-center gap-2 text-[12px] text-[var(--ink-3)] md:flex">
+          <span className="hidden min-w-0 items-center gap-2 type-caption text-[var(--ink-3)] lg:flex">
             <span className="truncate font-medium text-[var(--ink-2)]">
               {result.meta.fileName}
             </span>
@@ -201,32 +318,123 @@ function Header({
 
         <div className="ml-auto flex items-center gap-2">
           {result && (
-            <button
-              type="button"
-              onClick={onReset}
-              className="rounded-lg border border-[var(--hairline)] bg-[var(--surface-1)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--ink-2)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--ink-1)]"
-            >
+            <button type="button" onClick={onReset} className="btn btn-secondary hidden md:inline-flex">
               New analysis
             </button>
           )}
-          <Link
-            href="/evaluation"
-            className="rounded-lg border border-[var(--hairline)] bg-[var(--surface-1)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--ink-2)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--ink-1)]"
-          >
-            Evaluation
-          </Link>
           <ThemeToggle />
           <button
             type="button"
             onClick={onSignOut}
             title={`Signed in as ${username}`}
-            className="rounded-lg border border-[var(--hairline)] bg-[var(--surface-1)] px-2.5 py-1.5 text-[12px] font-medium text-[var(--ink-2)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--ink-1)]"
+            className="btn btn-secondary hidden md:inline-flex"
           >
             Sign out
           </button>
+          <MobileMenu
+            username={username}
+            hasResult={Boolean(result)}
+            onReset={onReset}
+            onSignOut={onSignOut}
+          />
         </div>
       </div>
+      <WorkflowTimeline
+        configured={pipeline === "n8n"}
+        live={live}
+        active={n8nActive}
+        model={result?.meta.model}
+      />
     </header>
+  );
+}
+
+function MobileMenu({
+  username,
+  hasResult,
+  onReset,
+  onSignOut,
+}: {
+  username: string;
+  hasResult: boolean;
+  onReset: () => void;
+  onSignOut: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative md:hidden">
+      <button
+        type="button"
+        className="grid h-10 w-10 place-items-center rounded-[8px] text-[var(--ink-1)] hover:bg-[var(--surface-2)]"
+        aria-expanded={open}
+        aria-label={open ? "Close menu" : "Open menu"}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span aria-hidden className="relative block h-3.5 w-4">
+          <span
+            className={`absolute left-0 h-px w-4 bg-current transition-transform duration-150 ${
+              open ? "top-[7px] rotate-45" : "top-0.5"
+            }`}
+            style={{ transitionTimingFunction: "var(--ease-out)" }}
+          />
+          <span
+            className={`absolute left-0 top-[7px] h-px w-4 bg-current transition-opacity duration-150 ${
+              open ? "opacity-0" : "opacity-100"
+            }`}
+          />
+          <span
+            className={`absolute left-0 h-px w-4 bg-current transition-transform duration-150 ${
+              open ? "top-[7px] -rotate-45" : "top-[13px]"
+            }`}
+            style={{ transitionTimingFunction: "var(--ease-out)" }}
+          />
+        </span>
+      </button>
+      {open && (
+        <div className="absolute right-0 top-12 z-40 w-56 rounded-[12px] border border-[var(--hairline)] bg-[var(--surface-1)] p-2">
+          <Link
+            href="/dashboard"
+            className="block rounded-[8px] px-3 py-2 type-body-sm font-medium text-[var(--ink-1)] hover:bg-[var(--surface-2)]"
+            onClick={() => {
+              onReset();
+              setOpen(false);
+            }}
+          >
+            Dashboard
+          </Link>
+          <Link
+            href="/evaluation"
+            className="block rounded-[8px] px-3 py-2 type-body-sm text-[var(--ink-2)] hover:bg-[var(--surface-2)] hover:text-[var(--ink-1)]"
+            onClick={() => setOpen(false)}
+          >
+            Evaluation
+          </Link>
+          {hasResult && (
+            <button
+              type="button"
+              className="block w-full rounded-[8px] px-3 py-2 text-left type-body-sm text-[var(--ink-2)] hover:bg-[var(--surface-2)] hover:text-[var(--ink-1)]"
+              onClick={() => {
+                onReset();
+                setOpen(false);
+              }}
+            >
+              New analysis
+            </button>
+          )}
+          <button
+            type="button"
+            className="block w-full rounded-[8px] px-3 py-2 text-left type-body-sm text-[var(--ink-2)] hover:bg-[var(--surface-2)] hover:text-[var(--ink-1)]"
+            onClick={onSignOut}
+          >
+            Sign out
+            <span className="mt-0.5 block type-caption text-[var(--ink-3)]">
+              {username}
+            </span>
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -261,12 +469,15 @@ function Results({
   }, [roleByIndex]);
 
   return (
-    <div className="space-y-5 rise">
+    <div className="space-y-8 rise">
+      <CallSnapshot result={result} />
+
       {/* verdict + distribution */}
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <Card
+          product
           title="Overall sentiment"
-          subtitle="Judged from the customer's experience of the call."
+          subtitle="Positive, Neutral or Negative — judged from the customer's experience of the call."
           aside={<VerdictBadge analysis={analysis} />}
         >
           <SentimentDonut
@@ -281,6 +492,7 @@ function Results({
 
       {/* timeline */}
       <Card
+        product
         title="Sentiment across the call"
         subtitle="One column per turn, above or below the neutral line. Hover for the model's reason; click to open that turn in the transcript."
       >
@@ -292,12 +504,22 @@ function Results({
         />
       </Card>
 
+      {/* sentence-level — an assignment output, so it sits above extra panels */}
+      <TranscriptView
+        transcript={transcript}
+        analysis={analysis}
+        roleByIndex={roleByIndex}
+        focusIndex={focusTurn}
+        onFocusHandled={onClearFocus}
+      />
+
       {/* KPI board */}
       <KpiBoard kpis={analysis.kpis} metrics={metrics} onJump={onJump} />
 
       {/* emotion + speakers */}
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card
+          product
           title="Emotion mix"
           subtitle="Share of the call carrying each emotion, with the quote it was read from."
         >
@@ -305,6 +527,7 @@ function Results({
         </Card>
 
         <Card
+          product
           title="Speakers"
           subtitle="Who talked, how much, and how each of them felt."
         >
@@ -313,25 +536,16 @@ function Results({
       </div>
 
       {/* narrative panels */}
-      <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
         <KeyMomentsPanel analysis={analysis} onJump={onJump} />
         <CoachingPanel analysis={analysis} onJump={onJump} />
         <FollowUpsPanel analysis={analysis} onJump={onJump} />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
         <CompliancePanel analysis={analysis} onJump={onJump} />
         <QualityPanel quality={quality} />
       </div>
-
-      {/* transcript */}
-      <TranscriptView
-        transcript={transcript}
-        analysis={analysis}
-        roleByIndex={roleByIndex}
-        focusIndex={focusTurn}
-        onFocusHandled={onClearFocus}
-      />
     </div>
   );
 }

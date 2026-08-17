@@ -9,7 +9,8 @@ import type { SentimentLabel } from "@/lib/schema";
  * Share of turns by sentiment.
  *
  * A donut is defensible here only because there are exactly three mutually
- * exclusive parts that sum to the whole; the hole carries the headline number,
+ * exclusive parts that sum to the whole; the hole carries the overall
+ * Positive / Neutral / Negative verdict.
  * which is the actual reason to use this form over three bars.
  */
 
@@ -52,10 +53,6 @@ export function SentimentDonut({
       return seg;
     });
   }, [distribution, total, radius]);
-
-  const dominant = ORDER.reduce((a, b) =>
-    distribution[a] >= distribution[b] ? a : b,
-  );
 
   return (
     <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-6">
@@ -109,20 +106,18 @@ export function SentimentDonut({
           )}
         </svg>
 
-        {/* Hero number in the hole — the point of the form. */}
+        {/* Overall Positive / Neutral / Negative — the assignment output. */}
         <div className="pointer-events-none absolute inset-0 grid place-items-center text-center">
           <div>
             <div
-              className="tabular text-[30px] font-semibold leading-none tracking-tight"
-              style={{ color: "var(--ink-1)" }}
+              className="text-[22px] font-semibold leading-none tracking-tight"
+              style={{ color: SENTIMENT_COLOR[overallLabel] }}
             >
-              {total === 0 ? "—" : `${Math.round((distribution[dominant] / total) * 100)}%`}
+              {SENTIMENT_LABEL[overallLabel]}
             </div>
-            <div className="mt-1 flex items-center justify-center gap-1 text-[11px] font-medium text-[var(--ink-2)]">
-              <span aria-hidden style={{ color: SENTIMENT_COLOR[dominant] }}>
-                {SENTIMENT_GLYPH[dominant]}
-              </span>
-              {SENTIMENT_LABEL[dominant].toLowerCase()} turns
+            <div className="mt-1.5 tabular text-[11px] font-medium text-[var(--ink-2)]">
+              {overallScore >= 0 ? "+" : "−"}
+              {Math.abs(overallScore).toFixed(2)}
             </div>
           </div>
         </div>

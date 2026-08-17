@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { AnalysisError, analyze, reconcileUtterances } from "@/lib/analyzer";
+import { saveAnalysis } from "@/lib/history";
 import { computeMetrics } from "@/lib/metrics";
 import { AnalysisResultSchema } from "@/lib/schema";
+import { currentUsername } from "@/lib/session";
 import { normalizeTranscriptText, parseTranscript } from "@/lib/transcript";
 
 export const runtime = "nodejs";
@@ -13,13 +15,11 @@ const MIN_CHARS = 40;
 /**
  * The pipeline, end to end:
  *
- *   read upload → normalise → parse into turns → orchestrate (n8n | direct)
+ *   read upload → normalise → parse into turns → n8n (validate → Gemini → gate)
  *   → schema-validate → verify evidence → quality gate → reconcile
  *   → compute metrics → respond
  *
- * Only the orchestrate step differs between the two backends; everything
- * either side of it is shared, so the guarantees the dashboard relies on hold
- * regardless of which path ran.
+ * Next.js never calls the model. The Gemini API key lives in n8n credentials.
  */
 export async function POST(request: Request) {
   const startedAt = Date.now();
@@ -116,8 +116,18 @@ export async function POST(request: Request) {
       quality,
     });
 
+    let historyId: string | null = null;
+    try {
+      const username = await currentUsername();
+      if (username) {
+        historyId = (await saveAnalysis(username, result)).id;
+      }
+    } catch (error) {
+      console.error("[analyze] history save failed", error);
+    }
+
     return NextResponse.json(
-      { result },
+      { result, historyId },
       { headers: { "cache-control": "no-store" } },
     );
   } catch (error) {

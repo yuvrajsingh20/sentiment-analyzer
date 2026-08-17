@@ -57,7 +57,14 @@ export function KpiBoard({
   onJump?: (turnIndex: number) => void;
 }) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-8">
+      <header>
+        <h2 className="type-card-title">Call KPIs</h2>
+        <p className="mt-1 type-body-sm text-[var(--ink-2)]">
+          CSAT, customer effort, NPS, first-contact resolution, escalation and
+          churn — answered only when the transcript supports them.
+        </p>
+      </header>
       <Group
         title="Customer"
         note="How the customer experienced the call."
@@ -300,6 +307,11 @@ export function KpiBoard({
               : "—"
           }
         />
+        <Computed
+          label="Customer trend"
+          value={<TrendSpark points={metrics.customerTrend} />}
+          caption="rolling sentiment on customer turns"
+        />
       </Group>
     </div>
   );
@@ -321,13 +333,11 @@ function Group({
   return (
     <section>
       <header className="mb-2.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h3 className="text-[12px] font-semibold uppercase tracking-[0.07em] text-[var(--ink-2)]">
-          {title}
-        </h3>
+        <h3 className="eyebrow text-[var(--ink-1)]">{title}</h3>
         <Provenance kind={kind} />
         <p className="text-[11px] text-[var(--ink-3)]">{note}</p>
       </header>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {children}
       </div>
     </section>
@@ -346,7 +356,7 @@ function Computed({
   tone?: RiskTone;
 }) {
   return (
-    <div className="card relative overflow-hidden px-3.5 py-3">
+    <div className="card relative overflow-hidden px-6 py-6">
       {tone && (
         <span
           aria-hidden
@@ -358,7 +368,7 @@ function Computed({
         <span className="eyebrow leading-tight">{label}</span>
         <Provenance kind="computed" />
       </div>
-      <div className="mt-1.5 text-[21px] font-semibold leading-none tracking-tight text-[var(--ink-1)]">
+      <div className="mt-2 text-[22px] font-medium leading-none tracking-[-0.3px] text-[var(--ink-1)]">
         {value}
       </div>
       {caption && (
@@ -370,6 +380,51 @@ function Computed({
 
 function Hint({ children }: { children: React.ReactNode }) {
   return <p className="text-[10px] leading-snug text-[var(--ink-3)]">{children}</p>;
+}
+
+function TrendSpark({
+  points,
+}: {
+  points: { index: number; value: number }[];
+}) {
+  if (points.length < 2) {
+    return <span className="text-[13px] text-[var(--ink-3)]">Not enough turns</span>;
+  }
+  const w = 140;
+  const h = 36;
+  const x = (i: number) => (i / (points.length - 1)) * (w - 2) + 1;
+  const y = (v: number) => h - 2 - ((v + 1) / 2) * (h - 4);
+  const d = points
+    .map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`)
+    .join(" ");
+  const last = points[points.length - 1]?.value ?? 0;
+  const color =
+    last > 0.08 ? "var(--pos)" : last < -0.08 ? "var(--neg)" : "var(--neu)";
+  return (
+    <svg
+      width={w}
+      height={h}
+      aria-label="Customer sentiment trend"
+      className="overflow-visible"
+    >
+      <line
+        x1={0}
+        x2={w}
+        y1={y(0)}
+        y2={y(0)}
+        stroke="var(--hairline)"
+        strokeWidth="1"
+      />
+      <path
+        d={d}
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
 }
 
 /**
@@ -399,7 +454,7 @@ function Dots({ value }: { value: number | null }) {
         return (
           <span
             key={n}
-            className="h-1.5 flex-1 rounded-full"
+            className="h-1.5 flex-1 rounded-[4px]"
             style={{
               background: filled ? SENTIMENT_COLOR.positive : "var(--surface-3)",
             }}

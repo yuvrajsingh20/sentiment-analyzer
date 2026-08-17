@@ -2,7 +2,6 @@
 
 import { useCallback, useRef, useState, type DragEvent } from "react";
 import { Notice } from "./ui";
-import { TONE_COLOR } from "@/lib/display";
 
 /**
  * The upload step.
@@ -107,26 +106,26 @@ export function UploadPanel({
 
   return (
     <div className="mx-auto w-full max-w-[880px] rise">
-      <div className="mb-7 text-center">
-        <h1 className="text-[24px] font-semibold tracking-tight text-[var(--ink-1)]">
+      <div className="mb-10">
+        <p className="eyebrow mb-3">Call intelligence</p>
+        <h1 className="type-display-md text-[var(--ink-1)]">
           Analyse a call transcript
         </h1>
-        <p className="mx-auto mt-2 max-w-[560px] text-[13px] leading-relaxed text-[var(--ink-2)]">
-          Upload a <code className="font-mono text-[12px]">.txt</code> transcript.
-          It is parsed into turns, analysed for sentiment, emotion and call KPIs,
-          then every claim is checked back against the transcript before you see it.
+        <p className="mt-4 max-w-[560px] type-body-lg text-[var(--ink-2)]">
+          Upload a .txt transcript. It is parsed into turns, analysed for
+          sentiment, emotion and call KPIs, then every claim is checked back
+          against the transcript before you see it.
         </p>
       </div>
 
       {shown && (
-        <div className="mb-5">
+        <div className="mb-6">
           <Notice tone="critical" title="Could not analyse that transcript">
             {shown}
           </Notice>
         </div>
       )}
 
-      {/* drop zone */}
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -134,10 +133,9 @@ export function UploadPanel({
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
-        className="rounded-2xl border-2 border-dashed p-8 text-center transition-colors"
+        className="card-product p-8 text-center transition-colors"
         style={{
-          borderColor: dragging ? "var(--pos)" : "var(--hairline-strong)",
-          background: dragging ? "var(--pos-wash)" : "var(--surface-1)",
+          background: dragging ? "var(--surface-2)" : "var(--surface-1)",
         }}
       >
         <input
@@ -154,13 +152,12 @@ export function UploadPanel({
 
         <div
           aria-hidden
-          className="mx-auto grid h-12 w-12 place-items-center rounded-xl"
-          style={{ background: "var(--surface-2)" }}
+          className="mx-auto grid h-12 w-12 place-items-center rounded-[8px] bg-[var(--surface-2)] text-[var(--ink-2)]"
         >
           <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none">
             <path
               d="M12 16V4m0 0L8 8m4-4 4 4M4 17v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1"
-              stroke="var(--ink-2)"
+              stroke="currentColor"
               strokeWidth="1.6"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -168,44 +165,39 @@ export function UploadPanel({
           </svg>
         </div>
 
-        <p className="mt-3 text-[14px] font-medium text-[var(--ink-1)]">
+        <p className="mt-4 text-[16px] font-medium text-[var(--ink-1)]">
           Drop a .txt transcript here
         </p>
-        <p className="mt-1 text-[12px] text-[var(--ink-3)]">
-          up to 400 KB · speaker-prefixed lines like{" "}
-          <code className="font-mono">Agent: …</code> parse best
+        <p className="mt-1 type-body-sm text-[var(--ink-3)]">
+          up to 400 KB · speaker-prefixed lines like Agent: … parse best
         </p>
 
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
           disabled={busy}
-          className="mt-4 rounded-lg px-4 py-2 text-[13px] font-semibold text-white transition-opacity disabled:opacity-60"
-          style={{ background: "var(--pos)" }}
+          className="btn btn-fin mt-6"
         >
           Choose a file
         </button>
       </div>
 
-      {/* samples */}
-      <div className="mt-7">
-        <p className="eyebrow mb-2.5">Or try a bundled sample</p>
-        <div className="grid gap-3 sm:grid-cols-3">
+      <div className="mt-10">
+        <p className="eyebrow mb-3">Or try a bundled sample</p>
+        <div className="grid gap-4 sm:grid-cols-3">
           {SAMPLES.map((sample) => (
             <button
               key={sample.file}
               type="button"
               disabled={busy}
               onClick={() => void loadSample(sample.file)}
-              className="card px-3.5 py-3 text-left transition-colors hover:border-[var(--hairline-strong)] disabled:opacity-60"
+              className="card px-6 py-6 text-left transition-colors hover:bg-[var(--surface-1)] disabled:opacity-60"
             >
-              <p className="text-[13px] font-semibold text-[var(--ink-1)]">
+              <p className="text-[16px] font-medium tracking-[-0.2px] text-[var(--ink-1)]">
                 {sample.title}
               </p>
-              <p className="mt-1 text-[11px] leading-relaxed text-[var(--ink-3)]">
-                {sample.blurb}
-              </p>
-              <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-[var(--ink-3)]">
+              <p className="mt-2 type-body-sm text-[var(--ink-2)]">{sample.blurb}</p>
+              <p className="mt-3 type-caption text-[var(--ink-3)]">
                 {loadingSample === sample.file ? "Loading…" : sample.expect}
               </p>
             </button>
@@ -213,9 +205,8 @@ export function UploadPanel({
         </div>
       </div>
 
-      {/* paste */}
-      <details className="mt-6 rounded-xl border border-[var(--hairline)] bg-[var(--surface-1)] px-4 py-3">
-        <summary className="cursor-pointer text-[12px] font-medium text-[var(--ink-2)]">
+      <details className="card mt-8 px-6 py-5">
+        <summary className="cursor-pointer text-[15px] font-medium text-[var(--ink-1)]">
           Paste a transcript instead
         </summary>
         <textarea
@@ -223,24 +214,19 @@ export function UploadPanel({
           onChange={(e) => setPasted(e.target.value)}
           rows={8}
           placeholder={"Agent: Good afternoon, how can I help?\nCustomer: I've been charged twice…"}
-          className="mt-3 w-full resize-y rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)] px-3 py-2 font-mono text-[12px] leading-relaxed text-[var(--ink-1)] outline-none transition-colors focus:border-[var(--pos)]"
+          className="field mt-4 font-mono text-[13px] leading-relaxed"
         />
         <button
           type="button"
           disabled={busy || pasted.trim().length < 40}
           onClick={() => onAnalyze({ text: pasted, fileName: "pasted-transcript.txt" })}
-          className="mt-2 rounded-lg px-3.5 py-1.5 text-[12px] font-semibold text-white transition-opacity disabled:opacity-40"
-          style={{ background: "var(--pos)" }}
+          className="btn btn-fin mt-3"
         >
           Analyse pasted text
         </button>
       </details>
 
-      <p
-        className="mt-6 flex items-start gap-2 text-[11px] leading-relaxed text-[var(--ink-3)]"
-        style={{ borderColor: TONE_COLOR.warning }}
-      >
-        <span aria-hidden>ⓘ</span>
+      <p className="mt-8 type-caption text-[var(--ink-3)]">
         Transcripts are sent to the analysis pipeline and held only for the
         lifetime of the request. Nothing is written to disk or to a database.
       </p>
@@ -250,58 +236,30 @@ export function UploadPanel({
 
 /* ── in-flight state ─────────────────────────────────────────────────────── */
 
-const STAGES = [
-  "Parsing the transcript into turns",
-  "Sending to the analysis pipeline",
-  "Scoring sentiment and emotion per turn",
-  "Deriving KPIs with supporting evidence",
-  "Verifying every quote against the transcript",
-  "Running the quality gate",
-];
-
 export function AnalysingState({ fileName }: { fileName: string }) {
+  const saved = fileName === "saved analysis";
+
   return (
-    <div className="mx-auto w-full max-w-[560px] py-10 text-center rise">
+    <div className="mx-auto w-full max-w-[560px] py-16 rise">
+      <p className="eyebrow">Working</p>
+      <p className="mt-3 type-headline text-[var(--ink-1)]">
+        {saved ? "Opening saved analysis" : `Analysing ${fileName}`}
+      </p>
+      <p className="mt-2 type-body-sm text-[var(--ink-2)]">
+        {saved
+          ? "Loading the stored dashboard."
+          : "Watch the timeline under the header — Gemini is the long step."}
+      </p>
+
       <div
         aria-hidden
-        className="mx-auto h-1 w-40 overflow-hidden rounded-full"
-        style={{ background: "var(--surface-3)" }}
+        className="mt-8 h-1 w-full overflow-hidden rounded-[4px] bg-[var(--surface-2)]"
       >
         <div
-          className="h-full w-1/3 rounded-full"
-          style={{
-            background: "var(--pos)",
-            animation: "sa-sweep 1.2s ease-in-out infinite",
-          }}
+          className="h-full w-1/3 rounded-[4px] bg-[var(--ink-1)]"
+          style={{ animation: "sa-indeterminate 1.2s linear infinite" }}
         />
       </div>
-
-      <p className="mt-5 text-[14px] font-semibold text-[var(--ink-1)]">
-        Analysing {fileName}
-      </p>
-      <p className="mt-1 text-[12px] text-[var(--ink-3)]">
-        A long transcript can take 30–90 seconds.
-      </p>
-
-      <ul
-        className="mx-auto mt-6 max-w-[380px] space-y-2 text-left"
-        aria-live="polite"
-      >
-        {STAGES.map((stage, i) => (
-          <li
-            key={stage}
-            className="flex items-center gap-2.5 text-[12px] text-[var(--ink-2)]"
-            style={{ animation: `sa-rise 0.4s ${i * 0.12}s both` }}
-          >
-            <span
-              aria-hidden
-              className="h-1.5 w-1.5 shrink-0 rounded-full"
-              style={{ background: "var(--pos)" }}
-            />
-            {stage}
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

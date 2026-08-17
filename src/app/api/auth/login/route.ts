@@ -5,30 +5,13 @@ import {
   createSession,
   sessionCookieOptions,
 } from "@/lib/auth";
+import { clientKey, rateLimited } from "@/lib/rate-limit";
+import { findUser, verifyPassword } from "@/lib/users";
 
 export const runtime = "nodejs";
 
-/** Very small in-memory throttle. Enough to make guessing tedious. */
-const attempts = new Map<string, { count: number; resetAt: number }>();
-const WINDOW_MS = 60_000;
-const MAX_ATTEMPTS = 8;
-
-function rateLimited(key: string): boolean {
-  const now = Date.now();
-  const entry = attempts.get(key);
-  if (!entry || entry.resetAt < now) {
-    attempts.set(key, { count: 1, resetAt: now + WINDOW_MS });
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > MAX_ATTEMPTS;
-}
-
 export async function POST(request: Request) {
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
-
-  if (rateLimited(ip)) {
+  if (rateLimited(clientKey(request))) {
     return NextResponse.json(
       { error: "Too many attempts. Wait a minute and try again." },
       { status: 429 },
@@ -55,15 +38,21 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!(await checkCredentials(username, password))) {
+  const envOk = await checkCredentials(username, password);
+  const local = await findUser(username);
+  const localOk = Boolean(
+    local?.passwordHash && (await verifyPassword(password, local.passwordHash)),
+  );
+  if (!envOk && !localOk) {
     return NextResponse.json(
       { error: "Those credentials were not accepted." },
       { status: 401 },
     );
   }
 
-  const token = await createSession(username);
-  const response = NextResponse.json({ ok: true, username });
+  const sessionName = localOk && local ? local.username : username;
+  const token = await createSession(sessionName);
+  const response = NextResponse.json({ ok: true, username: sessionName });
   response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
   return response;
 }

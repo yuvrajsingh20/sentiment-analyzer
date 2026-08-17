@@ -8,6 +8,10 @@ dist/
 .env.local
 .env*.local
 
+data/users.json
+data/users.json.*
+data/history/
+
 *.log
 npm-debug.log*
 .DS_Store

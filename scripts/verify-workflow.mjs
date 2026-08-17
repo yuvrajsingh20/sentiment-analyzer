@@ -66,10 +66,11 @@ const REQUIRED_STAGES = [
   "Authenticate",
   "Validate input",
   "Normalise & parse conversation",
-  "Build Claude request",
-  "Claude — analyse call",
+  "Build Gemini request",
+  "Gemini — analyse call",
   "Parse & schema-validate",
   "Verify evidence",
+  "KPI engine",
   "Quality gate",
   "Format response",
 ];
@@ -142,7 +143,7 @@ check(
 
 /* ── contract drift — the reason this file exists ────────────────────────── */
 
-const builder = byName.get("Build Claude request");
+const builder = byName.get("Build Gemini request");
 check(
   "embedded system prompt matches the shared contract",
   Boolean(builder) && builder.parameters.jsCode.includes(JSON.stringify(SYSTEM_PROMPT)),
@@ -223,6 +224,16 @@ if (verifier) {
     detail,
   );
 }
+
+const gemini = byName.get("Gemini — analyse call");
+check(
+  "Gemini HTTP node uses the generateContent URL from the previous stage",
+  Boolean(gemini) && String(gemini.parameters.url ?? "").includes("geminiUrl"),
+);
+check(
+  "Gemini credential is Header Auth named Gemini API",
+  gemini?.credentials?.httpHeaderAuth?.name === "Gemini API",
+);
 
 if (failures.length > 0) {
   console.error(`\n${failures.length} check(s) failed.`);

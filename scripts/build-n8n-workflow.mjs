@@ -15,10 +15,11 @@
  *     → Authenticate            shared-secret check
  *     → Validate input          shape, size, types
  *     → Normalise & parse       control chars, turn array, roster
- *     → Build Claude request    system prompt + JSON schema + user prompt
- *     → Claude (HTTP)           structured output
+ *     → Build Gemini request    system prompt + JSON schema + user prompt
+ *     → Gemini (HTTP)           structured JSON output
  *     → Parse & schema-validate unwrap, JSON.parse, contract check
  *     → Verify evidence         every quote matched against the transcript
+ *     → KPI engine              deterministic talk-ratio / word / question stats
  *     → Quality gate            coverage / grounding / support scoring
  *     → Format response         { analysis, quality, diagnostics }
  *     → Respond
@@ -187,18 +188,19 @@ return [
 ];
 `;
 
-/* ── stage 4: build the Claude request ───────────────────────────────────── */
+/* ── stage 4: build the Gemini request ───────────────────────────────────── */
 
 const buildRequestCode = `${GENERATED_BANNER}
 //
-// Stage 4 — Build the Claude request.
+// Stage 4 — Build the Gemini request.
 // SYSTEM_PROMPT and OUTPUT_JSON_SCHEMA below are inlined copies of
 // src/contract/analysis-contract.mjs. Nothing about the model's instructions
-// is decided in n8n; this node only assembles them.
+// is decided in n8n; this node only assembles them. The API key is not here —
+// it lives in the n8n Header Auth credential on the next node.
 
 const SYSTEM_PROMPT = ${JSON.stringify(SYSTEM_PROMPT)};
 const OUTPUT_JSON_SCHEMA = ${JSON.stringify(OUTPUT_JSON_SCHEMA)};
-const MODEL = $env.ANTHROPIC_MODEL || ${JSON.stringify(DEFAULT_MODEL)};
+const MODEL = $env.GEMINI_MODEL || ${JSON.stringify(DEFAULT_MODEL)};
 
 const input = $input.first().json;
 
@@ -235,15 +237,20 @@ return [
     json: {
       ok: true,
       context: input,
-      claudeRequest: {
-        model: MODEL,
-        max_tokens: 32000,
-        system: SYSTEM_PROMPT,
-        output_config: {
-          effort: 'high',
-          format: { type: 'json_schema', schema: OUTPUT_JSON_SCHEMA },
+      model: MODEL,
+      geminiUrl:
+        'https://generativelanguage.googleapis.com/v1beta/models/' +
+        MODEL +
+        ':generateContent',
+      geminiRequest: {
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 32768,
+          responseMimeType: 'application/json',
+          responseJsonSchema: OUTPUT_JSON_SCHEMA,
         },
-        messages: [{ role: 'user', content: userPrompt }],
       },
     },
   },
@@ -255,42 +262,60 @@ return [
 const parseResponseCode = `${GENERATED_BANNER}
 //
 // Stage 6 — Parse and schema-validate.
-// Unwrap the Messages API response and check the analysis against the
-// contract's required shape before anything downstream touches it.
+// Unwrap the Gemini generateContent response and check the analysis against
+// the contract's required shape before anything downstream touches it.
 
 const response = $input.first().json;
-const context = $('Build Claude request').first().json.context;
+const built = $('Build Gemini request').first().json;
+const context = built.context;
 
 const fail = (status, error, detail) => [
   { json: { ok: false, status, error, detail } },
 ];
 
-if (response.type === 'error') {
-  return fail(502, 'The Claude API returned an error.', response.error?.message);
+if (response.error) {
+  const code = Number(response.error.code);
+  const msg = String(response.error.message || '');
+  if (code === 429 || /RESOURCE_EXHAUSTED/i.test(msg)) {
+    return fail(429, 'Gemini is rate limited. Wait a moment and try again.');
+  }
+  if (code === 503 || /high demand|UNAVAILABLE|overloaded/i.test(msg)) {
+    return fail(503, 'Gemini is busy right now. Wait a few seconds and try again.');
+  }
+  const status = code === 403 || code === 401 ? 502 : 502;
+  return fail(status, 'The Gemini API returned an error.', msg.slice(0, 280));
 }
-if (response.stop_reason === 'refusal') {
-  return fail(
-    422,
-    'The model declined to analyse this transcript.',
-    response.stop_details?.explanation,
-  );
+
+const candidate = (response.candidates ?? [])[0];
+if (!candidate) {
+  return fail(502, 'The Gemini API returned no candidates.');
 }
-if (response.stop_reason === 'max_tokens') {
+
+const finish = candidate.finishReason || candidate.finish_reason;
+if (finish === 'MAX_TOKENS') {
   return fail(
     413,
     'The response was truncated before the analysis was complete. Try a shorter transcript.',
   );
 }
+if (finish === 'SAFETY' || finish === 'RECITATION' || finish === 'PROHIBITED_CONTENT') {
+  return fail(
+    422,
+    'The model declined to analyse this transcript.',
+    finish,
+  );
+}
 
-// With adaptive thinking on, thinking blocks precede the text block.
-const textBlock = (response.content ?? []).find((b) => b.type === 'text');
-if (!textBlock) {
+const text = (candidate.content?.parts ?? [])
+  .map((p) => (typeof p.text === 'string' ? p.text : ''))
+  .join('');
+if (!text.trim()) {
   return fail(502, 'The model returned no analysis payload.');
 }
 
 let analysis;
 try {
-  analysis = JSON.parse(textBlock.text);
+  analysis = JSON.parse(text);
 } catch (error) {
   return fail(502, 'The model returned malformed JSON.', String(error));
 }
@@ -309,15 +334,17 @@ for (const group of ['customer', 'agent', 'conversation']) {
   }
 }
 
+const usage = response.usageMetadata ?? response.usage ?? null;
+
 return [
   {
     json: {
       ok: true,
       analysis,
       context,
-      model: response.model,
-      stopReason: response.stop_reason,
-      usage: response.usage ?? null,
+      model: response.modelVersion || built.model,
+      stopReason: finish || 'STOP',
+      usage,
     },
   },
 ];
@@ -413,11 +440,87 @@ return [
 ];
 `;
 
-/* ── stage 8: quality gate ───────────────────────────────────────────────── */
+/* ── stage 8: KPI engine ─────────────────────────────────────────────────── */
+
+const kpiEngineCode = `${GENERATED_BANNER}
+//
+// Stage 8 — KPI engine.
+// Deterministic arithmetic over the parsed turns. Talk ratio, word counts and
+// question counts are exactly the numbers an LLM is worst at, so they are
+// computed here rather than trusted from the model. The quality gate then
+// flags answered KPI claims that cite no evidence.
+
+const input = $input.first().json;
+const turns = input.context.turns ?? [];
+const roles = new Map(
+  (input.context.speakerRoles ?? []).map((s) => [s.speaker.toLowerCase(), s.role]),
+);
+
+const wordCount = (text) =>
+  (String(text).match(/[\\p{L}\\p{N}][\\p{L}\\p{N}'’-]*/gu) ?? []).length;
+
+const countQuestions = (text) => {
+  const explicit = (String(text).match(/\\?/g) ?? []).length;
+  if (explicit > 0) return explicit;
+  return /^\\s*(who|what|when|where|why|how|can|could|would|will|do|does|did|is|are|was|were|have|has|may|might|shall|should)\\b/i.test(
+    text,
+  )
+    ? 1
+    : 0;
+};
+
+let agentWords = 0;
+let customerWords = 0;
+let totalWords = 0;
+let questions = 0;
+for (const t of turns) {
+  const words = wordCount(t.text);
+  totalWords += words;
+  questions += countQuestions(t.text);
+  const role = roles.get(String(t.speaker).toLowerCase());
+  if (role === 'agent') agentWords += words;
+  else if (role === 'customer') customerWords += words;
+}
+
+const pair = agentWords + customerWords;
+const round = (n) => Math.round(n * 1000) / 1000;
+
+const claims = [];
+for (const group of ['customer', 'agent', 'conversation']) {
+  for (const [key, claim] of Object.entries(input.analysis?.kpis?.[group] ?? {})) {
+    if (key === 'topics' || key === 'complianceChecks') continue;
+    if (claim && typeof claim === 'object') claims.push({ group, key, claim });
+  }
+}
+
+const answered = claims.filter(
+  (c) => c.claim.status === 'ok' && c.claim.value !== null && c.claim.value !== undefined,
+);
+const answeredWithoutEvidence = answered.filter(
+  (c) => !Array.isArray(c.claim.evidence) || c.claim.evidence.length === 0,
+).map((c) => c.group + '.' + c.key);
+
+const computed = {
+  turns: turns.length,
+  words: totalWords,
+  questions,
+  talkRatio: {
+    agent: pair > 0 ? round(agentWords / pair) : 0,
+    customer: pair > 0 ? round(customerWords / pair) : 0,
+  },
+  answeredKpis: answered.length,
+  abstainedKpis: claims.length - answered.length,
+  answeredWithoutEvidence,
+};
+
+return [{ json: { ...input, computed } }];
+`;
+
+/* ── stage 9: quality gate ───────────────────────────────────────────────── */
 
 const qualityGateCode = `${GENERATED_BANNER}
 //
-// Stage 8 — Quality gate.
+// Stage 9 — Quality gate.
 // Turn the raw counts into coverage / grounding / support metrics and a verdict.
 // Mirrors src/lib/verify.ts. The gate reports; it never silently drops an
 // analysis, because a reviewer needs to see a bad run as much as a good one.
@@ -558,14 +661,14 @@ const quality = {
   issues,
 };
 
-return [{ json: { ok: true, analysis, quality, context: input.context, model: input.model, usage: input.usage, missingTurns, phantomTurns } }];
+return [{ json: { ok: true, analysis, quality, context: input.context, model: input.model, usage: input.usage, missingTurns, phantomTurns, computed: input.computed ?? null } }];
 `;
 
-/* ── stage 9: format the response ────────────────────────────────────────── */
+/* ── stage 10: format the response ───────────────────────────────────────── */
 
 const formatResponseCode = `${GENERATED_BANNER}
 //
-// Stage 9 — Format the response.
+// Stage 10 — Format the response.
 // One shape for the app to consume, plus diagnostics that make a bad run
 // legible in the n8n execution log without opening the dashboard.
 
@@ -585,6 +688,7 @@ return [
         missingTurns: input.missingTurns,
         phantomTurns: input.phantomTurns,
         wasRetry: Boolean(input.context.retryFeedback),
+        computed: input.computed ?? null,
       },
     },
   },
@@ -654,25 +758,27 @@ const workflow = {
           "Returns `{ analysis, quality, diagnostics }`, or `{ error }`.",
           "",
           "### One node per responsibility",
-          "Authenticate · Validate · Normalise & parse · Build request ·",
-          "Claude · Schema-validate · **Verify evidence** · **Quality gate** ·",
-          "Format.",
+          "Authenticate · Validate · Normalise & parse · Build Gemini request ·",
+          "Gemini · Schema-validate · **Verify evidence** · **KPI engine** ·",
+          "**Quality gate** · Format.",
           "",
           "*Verify evidence* string-matches every quote the model cited back",
           "against the turn it came from. Quotes that do not exist are counted",
           "as fabrications and drive the gate verdict.",
           "",
           "### Setup",
-          "1. Create a **Header Auth** credential named `Anthropic API`:",
-          "   name `x-api-key`, value = your Anthropic key.",
-          "2. Set n8n env vars: `N8N_WEBHOOK_SECRET`, optionally `ANTHROPIC_MODEL`.",
+          "1. Create a **Header Auth** credential named `Gemini API`:",
+          "   name `x-goog-api-key`, value = your Gemini API key.",
+          "   The key lives here, not in Next.js.",
+          "2. Set n8n env vars: `N8N_WEBHOOK_SECRET`, optionally `GEMINI_MODEL`",
+          "   (default `gemini-2.5-flash`).",
           "3. Activate, then copy the **Production URL** into the app's",
           "   `N8N_WEBHOOK_URL`.",
           "",
           "_Generated by `scripts/build-n8n-workflow.mjs`. Do not edit the Code",
           "nodes here — edit `src/contract/*.mjs` and regenerate._",
         ].join("\n"),
-        height: 560,
+        height: 620,
         width: 480,
       },
       id: "note-overview",
@@ -705,24 +811,21 @@ const workflow = {
     codeNode("Normalise & parse conversation", normalizeCode, [1060, ROW - 120]),
     gateNode("Parsed?", [1260, ROW - 120]),
 
-    codeNode("Build Claude request", buildRequestCode, [1460, ROW - 180]),
+    codeNode("Build Gemini request", buildRequestCode, [1460, ROW - 180]),
 
     {
       parameters: {
         method: "POST",
-        url: "https://api.anthropic.com/v1/messages",
+        url: "={{ $json.geminiUrl }}",
         authentication: "genericCredentialType",
         genericAuthType: "httpHeaderAuth",
         sendHeaders: true,
         headerParameters: {
-          parameters: [
-            { name: "anthropic-version", value: "2023-06-01" },
-            { name: "content-type", value: "application/json" },
-          ],
+          parameters: [{ name: "content-type", value: "application/json" }],
         },
         sendBody: true,
         specifyBody: "json",
-        jsonBody: "={{ JSON.stringify($json.claudeRequest) }}",
+        jsonBody: "={{ JSON.stringify($json.geminiRequest) }}",
         options: {
           timeout: 300000,
           // neverError so a 4xx/5xx body reaches the parse stage and becomes a
@@ -731,13 +834,13 @@ const workflow = {
           retry: { retry: { maxTries: 2, waitBetweenTries: 2000 } },
         },
       },
-      id: "call-claude",
-      name: "Claude — analyse call",
+      id: "call-gemini",
+      name: "Gemini — analyse call",
       type: "n8n-nodes-base.httpRequest",
       typeVersion: 4.2,
       position: [1660, ROW - 180],
       credentials: {
-        httpHeaderAuth: { id: "anthropic-api", name: "Anthropic API" },
+        httpHeaderAuth: { id: "gemini-api", name: "Gemini API" },
       },
     },
 
@@ -745,8 +848,9 @@ const workflow = {
     gateNode("Schema valid?", [2060, ROW - 180]),
 
     codeNode("Verify evidence", verifyEvidenceCode, [2260, ROW - 240]),
-    codeNode("Quality gate", qualityGateCode, [2460, ROW - 240]),
-    codeNode("Format response", formatResponseCode, [2660, ROW - 240]),
+    codeNode("KPI engine", kpiEngineCode, [2460, ROW - 240]),
+    codeNode("Quality gate", qualityGateCode, [2660, ROW - 240]),
+    codeNode("Format response", formatResponseCode, [2860, ROW - 240]),
 
     {
       parameters: {
@@ -758,7 +862,7 @@ const workflow = {
       name: "Respond 200",
       type: "n8n-nodes-base.respondToWebhook",
       typeVersion: 1.1,
-      position: [2860, ROW - 240],
+      position: [3060, ROW - 240],
     },
     {
       parameters: {
@@ -820,15 +924,15 @@ const workflow = {
     Parsed: undefined,
     "Parsed?": {
       main: [
-        [{ node: "Build Claude request", type: "main", index: 0 }],
+        [{ node: "Build Gemini request", type: "main", index: 0 }],
         [{ node: "Respond with error", type: "main", index: 0 }],
       ],
     },
 
-    "Build Claude request": {
-      main: [[{ node: "Claude — analyse call", type: "main", index: 0 }]],
+    "Build Gemini request": {
+      main: [[{ node: "Gemini — analyse call", type: "main", index: 0 }]],
     },
-    "Claude — analyse call": {
+    "Gemini — analyse call": {
       main: [[{ node: "Parse & schema-validate", type: "main", index: 0 }]],
     },
     "Parse & schema-validate": {
@@ -841,7 +945,8 @@ const workflow = {
       ],
     },
 
-    "Verify evidence": { main: [[{ node: "Quality gate", type: "main", index: 0 }]] },
+    "Verify evidence": { main: [[{ node: "KPI engine", type: "main", index: 0 }]] },
+    "KPI engine": { main: [[{ node: "Quality gate", type: "main", index: 0 }]] },
     "Quality gate": { main: [[{ node: "Format response", type: "main", index: 0 }]] },
     "Format response": { main: [[{ node: "Respond 200", type: "main", index: 0 }]] },
   },

@@ -6,11 +6,12 @@ sentiment, emotion detection, a call-centre KPI board, and a summary — with
 against the transcript before you see it.**
 
 ```
-Next.js  ──►  n8n  ──►  Claude  ──►  quality gate  ──►  dashboard
+Next.js  ──►  n8n  ──►  Gemini  ──►  quality gate  ──►  dashboard
  login         auth      structured    evidence          evidence
  upload        validate  JSON output   verification      explorer
  dashboard     normalise               coverage /        KPI board
                parse                   grounding         transcript
+               KPI engine
 ```
 
 ---
@@ -41,21 +42,43 @@ quoted back to the model.
 
 ```bash
 npm install
-cp .env.example .env.local        # set AUTH_* and ANTHROPIC_API_KEY
+cp .env.example .env.local        # set AUTH_*, GOOGLE_*, N8N_WEBHOOK_URL
 npm run dev                       # http://localhost:3000
 ```
 
-Sign in with `AUTH_USERNAME` / `AUTH_PASSWORD`, then drop in a `.txt` transcript
-or click one of the three bundled samples.
+Sign in with **Continue with Google** (when `GOOGLE_CLIENT_ID` is set), create an
+account at `/signup`, or use `AUTH_USERNAME` / `AUTH_PASSWORD`, then drop in a
+`.txt` transcript or click one of the three bundled samples.
 
-With only `ANTHROPIC_API_KEY` set, the app uses the **direct fallback** path.
-Set `N8N_WEBHOOK_URL` as well and it routes through n8n instead. The header chip
-always says which path produced the result on screen.
+### Google OAuth setup
+
+1. Create an OAuth 2.0 **Web application** client in [Google Cloud Console](https://console.cloud.google.com/apis/credentials).
+2. Add an **Authorized JavaScript origin** (required for Continue with Google):
+   ```
+   http://localhost:3000
+   ```
+3. Add an **Authorized redirect URI** (legacy code-exchange fallback):
+   ```
+   http://localhost:3000/api/auth/callback/google
+   ```
+4. Copy the client ID into `.env.local`. The client secret is optional for the
+   popup sign-in path:
+   ```
+   GOOGLE_CLIENT_ID=....apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=GOCSPX-...
+   GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/callback/google
+   ```
+5. Restart `npm run dev`.
+
+Analysis is **always** `UI → n8n → Gemini`. Set `N8N_WEBHOOK_URL` to the
+imported workflow (or `npm run n8n:simulate` for local plumbing). The Gemini
+API key lives in n8n credentials, not in Next.js. The header chip shows
+whether the webhook is configured.
 
 ### Run everything the CI would
 
 ```bash
-npm run check      # typecheck + workflow verification + 54 unit tests
+npm run check      # typecheck + workflow verification + 61 unit tests
 ```
 
 ### Exercise the n8n path with no n8n instance and no API key
@@ -69,7 +92,7 @@ N8N_WEBHOOK_SECRET=local-dev npm run dev
 `scripts/simulate-n8n.mjs` loads the generated workflow JSON, walks its
 connection graph, and executes each Code node's **real source** in a sandbox —
 authentication, validation, the conversation parser, the evidence verifier, the
-quality gate. Only the Claude HTTP call is substituted. It deliberately plants
+quality gate, and the KPI engine. Only the Gemini HTTP call is substituted. It deliberately plants
 one fabricated quote so you can watch the gate catch it.
 
 ---
@@ -89,7 +112,7 @@ The prompt, the output JSON Schema and the evidence-matching rules live in
 `n8n/sentiment-analyzer.workflow.json` is **generated**, not hand-written
 (`npm run build:workflow`, which also runs as part of `npm run build`). The
 system prompt, the schema and the matcher are baked in from those files rather
-than retyped, so the two orchestration paths cannot drift. `npm run
+than retyped, so the app and the workflow cannot drift. `npm run
 verify:workflow` asserts that byte-for-byte, and additionally:
 
 - every Code node parses as JavaScript,
@@ -110,10 +133,11 @@ One node per responsibility, so opening the workflow shows the architecture:
 | **Authenticate** | shared-secret check against `N8N_WEBHOOK_SECRET` |
 | **Validate input** | shape, size, types — a bad payload never costs a token |
 | **Normalise & parse** | control characters, turn array, speaker roster |
-| **Build Claude request** | system prompt + JSON schema + user prompt |
-| **Claude** | HTTP, structured output, `neverError` so a 4xx becomes a structured error |
+| **Build Gemini request** | system prompt + JSON schema + user prompt |
+| **Gemini** | HTTP `generateContent`, structured JSON, `neverError` so a 4xx becomes a structured error |
 | **Parse & schema-validate** | unwrap, `JSON.parse`, contract check |
 | **Verify evidence** | every quote matched against the turn it cites |
+| **KPI engine** | deterministic talk-ratio / word / question stats |
 | **Quality gate** | coverage / grounding / support scoring and a verdict |
 | **Format response** | `{ analysis, quality, diagnostics }` |
 
@@ -121,13 +145,13 @@ Every gate's false branch routes to a Respond node that returns a real HTTP
 status (401 / 400 / 413 / 422 / 502), because the app's fetch layer distinguishes
 them.
 
-### Why a direct fallback exists
+### Why there is no Next.js → Gemini path
 
-`src/lib/analyzer.ts` calls Claude directly when `N8N_WEBHOOK_URL` is unset, so
-the app is runnable and reviewable without standing up n8n. It is deliberately
-thin: it shares `prompt.ts`, `schema.ts` and `verify.ts` with the workflow, so
-there is one prompt, one contract and one definition of "good enough" — not two
-implementations that diverge.
+`src/lib/analyzer.ts` posts the transcript to the n8n webhook and nothing else.
+If `N8N_WEBHOOK_URL` is unset, analysis returns 503 rather than calling Gemini
+from the app. That is the assignment architecture: **n8n is the orchestrator,
+Gemini is the analyst, Next.js is the product.** Local demo without n8n uses
+`npm run n8n:simulate`, which still runs the real Code stages.
 
 ---
 
@@ -279,7 +303,7 @@ are measured against those labels only.
 ## Testing
 
 ```bash
-npm test     # 54 tests
+npm test     # 61 tests
 ```
 
 Covers the parser (six real transcript shapes, prose fallback, speaker
@@ -304,18 +328,21 @@ See `.env.example`. The essentials:
 
 | Variable | Purpose |
 |---|---|
-| `AUTH_USERNAME` / `AUTH_PASSWORD` | login credentials |
+| `AUTH_USERNAME` / `AUTH_PASSWORD` | demo login (`analyst` / `change-me`) |
+| `GOOGLE_CLIENT_ID` | enables Continue with Google |
 | `AUTH_SECRET` | HMAC key for the session cookie — **required in production** |
-| `ANTHROPIC_API_KEY` | the direct fallback path |
-| `N8N_WEBHOOK_URL` | route through n8n instead |
+| `N8N_WEBHOOK_URL` | **required** — route every analysis through n8n |
 | `N8N_WEBHOOK_SECRET` | shared secret sent as `x-api-key` |
+
+The Gemini API key is **not** an app env var. It is an n8n Header Auth
+credential.
 
 ### n8n setup
 
 1. Import `n8n/sentiment-analyzer.workflow.json`.
-2. Create a **Header Auth** credential named `Anthropic API`: name `x-api-key`,
-   value your Anthropic key.
-3. Set `N8N_WEBHOOK_SECRET` (and optionally `ANTHROPIC_MODEL`) in the n8n
+2. Create a **Header Auth** credential named `Gemini API`: name
+   `x-goog-api-key`, value your Gemini API key.
+3. Set `N8N_WEBHOOK_SECRET` (and optionally `GEMINI_MODEL`) in the n8n
    environment.
 4. Activate, copy the **Production URL** into the app's `N8N_WEBHOOK_URL`.
 

@@ -1,14 +1,34 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { GoogleSignIn } from "@/components/google-sign-in";
 import { Notice, ThemeToggle } from "@/components/ui";
 
-export function LoginForm({ redirectTo }: { redirectTo: string }) {
+function Divider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-3 py-1">
+      <span className="h-px flex-1 bg-[var(--hairline)]" />
+      <span className="type-caption text-[var(--ink-3)]">{label}</span>
+      <span className="h-px flex-1 bg-[var(--hairline)]" />
+    </div>
+  );
+}
+
+export function LoginForm({
+  redirectTo,
+  initialError,
+  googleClientId,
+}: {
+  redirectTo: string;
+  initialError?: string;
+  googleClientId: string | null;
+}) {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError ?? null);
   const [busy, setBusy] = useState(false);
 
   async function onSubmit(event: FormEvent) {
@@ -41,9 +61,14 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className="card p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-[14px] font-semibold">Sign in</h2>
+    <div className="login-card rise">
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="type-headline text-[var(--ink-1)]">Welcome back</h2>
+          <p className="mt-1 type-body-sm text-[var(--ink-2)]">
+            Sign in to analyse call transcripts
+          </p>
+        </div>
         <ThemeToggle />
       </div>
 
@@ -55,40 +80,64 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
         </div>
       )}
 
-      <label className="block">
-        <span className="eyebrow">Username</span>
-        <input
-          name="username"
-          autoComplete="username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-          autoFocus
-          className="mt-1.5 w-full rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)] px-3 py-2 text-[14px] text-[var(--ink-1)] outline-none transition-colors focus:border-[var(--pos)]"
+      {googleClientId && (
+        <GoogleSignIn
+          clientId={googleClientId}
+          redirectTo={redirectTo}
+          disabled={busy}
+          onError={(message) => setError(message || null)}
         />
-      </label>
+      )}
 
-      <label className="mt-4 block">
-        <span className="eyebrow">Password</span>
-        <input
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          className="mt-1.5 w-full rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)] px-3 py-2 text-[14px] text-[var(--ink-1)] outline-none transition-colors focus:border-[var(--pos)]"
-        />
-      </label>
+      {googleClientId ? (
+        <Divider label="or use credentials" />
+      ) : (
+        <div className="mb-1" />
+      )}
 
-      <button
-        type="submit"
-        disabled={busy}
-        className="mt-6 w-full rounded-lg px-4 py-2.5 text-[14px] font-semibold text-white transition-opacity disabled:opacity-60"
-        style={{ background: "var(--pos)" }}
-      >
-        {busy ? "Signing in…" : "Sign in"}
-      </button>
-    </form>
+      <form onSubmit={onSubmit} className="space-y-4">
+        <label className="block">
+          <span className="eyebrow">Username</span>
+          <input
+            name="username"
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            autoFocus={!googleClientId}
+            disabled={busy}
+            className="field mt-1.5"
+          />
+        </label>
+
+        <label className="block">
+          <span className="eyebrow">Password</span>
+          <input
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            disabled={busy}
+            className="field mt-1.5"
+          />
+        </label>
+
+        <button type="submit" disabled={busy} className="btn btn-primary w-full">
+          {busy ? "Signing in…" : "Sign in"}
+        </button>
+      </form>
+
+      <p className="mt-5 text-center type-body-sm text-[var(--ink-3)]">
+        New here?{" "}
+        <Link
+          href={`/signup?next=${encodeURIComponent(redirectTo)}`}
+          className="font-medium text-[var(--ink-1)] underline decoration-[var(--hairline)] underline-offset-2 hover:decoration-[var(--ink-1)]"
+        >
+          Create an account
+        </Link>
+      </p>
+    </div>
   );
 }

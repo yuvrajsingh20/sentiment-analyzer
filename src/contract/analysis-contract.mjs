@@ -1,17 +1,17 @@
 /**
- * The prompt and output schema handed to Claude.
+ * The prompt and output schema handed to Gemini (via n8n).
  *
  * PLAIN .mjs ON PURPOSE. Three consumers import this exact file:
  *   1. src/lib/prompt.ts                — the typed re-export the app uses
  *   2. scripts/build-n8n-workflow.mjs   — bakes it into the n8n workflow JSON
  *   3. (transitively) n8n itself, via the generated workflow
  *
- * That is the point: the workflow and the direct fallback cannot drift, because
+ * That is the point: the workflow cannot drift from the app's contract, because
  * there is one copy of the prompt and one copy of the schema.
  * After editing this file, run `npm run build:workflow`.
  */
 
-export const DEFAULT_MODEL = "claude-opus-5";
+export const DEFAULT_MODEL = "gemini-2.5-flash";
 
 /* ─────────────────────────────────────────────────────────────────────────
    System prompt

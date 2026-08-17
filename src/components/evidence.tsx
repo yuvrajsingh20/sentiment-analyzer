@@ -149,7 +149,7 @@ export function WhyDisclosure({
         {label}
         {evidence.length > 0 && (
           <span
-            className="tabular rounded-full border border-[var(--hairline)] px-1.5 py-px text-[9px]"
+            className="chip tabular !px-1.5 !py-px !text-[11px]"
             style={hasUngrounded ? { borderColor: TONE_COLOR.critical } : undefined}
           >
             {grounded}/{evidence.length} verified
@@ -160,7 +160,7 @@ export function WhyDisclosure({
       {open && (
         <div
           id={panelId}
-          className="mt-2 space-y-2.5 rounded-lg border border-[var(--hairline)] bg-[var(--surface-2)] px-3 py-2.5"
+          className="mt-2 space-y-2.5 rounded-[8px] border border-[var(--hairline)] bg-[var(--plane)] px-4 py-3"
         >
           {reason && (
             <p className="text-[11px] leading-relaxed text-[var(--ink-2)]">{reason}</p>
@@ -254,7 +254,7 @@ export function Abstained({ reason }: { reason: string }) {
       <p className="flex items-baseline gap-1.5 text-[18px] font-semibold leading-none tracking-tight text-[var(--ink-3)]">
         N/A
       </p>
-      <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--ink-3)]">
+      <p className="mt-1.5 type-caption font-medium text-[var(--ink-3)]">
         Insufficient evidence
       </p>
       {reason && (
@@ -291,7 +291,7 @@ export function ClaimTile({
   const barValue = answered && bar ? bar(value) : null;
 
   return (
-    <div className="card relative flex flex-col overflow-hidden px-3.5 py-3">
+    <div className="card relative flex flex-col overflow-hidden px-6 py-6">
       {toneValue && (
         <span
           aria-hidden
@@ -304,7 +304,7 @@ export function ClaimTile({
         <span className="eyebrow leading-tight">{label}</span>
         <span
           title="Inferred by the language model from the transcript."
-          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--hairline)] bg-[var(--surface-2)] px-1.5 py-px text-[9px] font-semibold uppercase tracking-[0.06em] text-[var(--ink-3)]"
+          className="chip"
         >
           <span aria-hidden>◇</span>
           Inferred
@@ -314,14 +314,14 @@ export function ClaimTile({
       <div className="mt-1.5 flex-1">
         {answered ? (
           <>
-            <div className="text-[21px] font-semibold leading-none tracking-tight text-[var(--ink-1)]">
+            <div className="text-[22px] font-medium leading-none tracking-[-0.3px] text-[var(--ink-1)]">
               {render(value)}
             </div>
             {typeof barValue === "number" && (
-              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[var(--seq-track)]">
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-[4px] bg-[var(--seq-track)]">
                 <div
                   data-mark
-                  className="h-full rounded-full transition-[width] duration-500"
+                  className="h-full rounded-[4px] transition-[width] duration-500"
                   style={{
                     width: `${Math.max(2, Math.min(100, barValue * 100))}%`,
                     background: toneValue ? TONE_COLOR[toneValue] : "var(--seq-fill)",
@@ -330,6 +330,11 @@ export function ClaimTile({
               </div>
             )}
             {caption && <div className="mt-1.5">{caption}</div>}
+            {claim.reason && (
+              <p className="mt-2 text-[11px] leading-snug text-[var(--ink-2)]">
+                {claim.reason}
+              </p>
+            )}
           </>
         ) : (
           <Abstained reason={claim.reason} />
@@ -339,7 +344,8 @@ export function ClaimTile({
       {answered && (
         <div className="mt-2.5 border-t border-[var(--hairline)] pt-2">
           <WhyDisclosure
-            reason={claim.reason}
+            label="Evidence"
+            reason=""
             evidence={claim.evidence}
             confidence={claim.confidence}
             onJump={onJump}

@@ -5,23 +5,16 @@
  *
  * Loads n8n/sentiment-analyzer.workflow.json, walks its connection graph, and
  * executes each Code node's real source in a sandbox with a minimal n8n shim
- * ($input, $env, $('Node')). Only the Claude HTTP node is substituted, with a
- * canned Messages API response synthesised from the transcript that was posted.
+ * ($input, $env, $('Node')).
  *
- * Why this exists: the workflow's Code nodes contain the authentication check,
- * the input validation, the conversation parser, the evidence verifier and the
- * quality gate. Those are real logic, and "it imports into n8n without a red
- * triangle" is not evidence that they work. This runs them.
- *
- * Point the app at it to exercise the full UI → n8n → gate → dashboard path
- * with no n8n instance and no API key:
+ * The Gemini HTTP node:
+ *   - calls generateContent for real when GEMINI_API_KEY is set (this is the
+ *     local stand-in for n8n Header Auth — Next.js still never sees the key)
+ *   - otherwise returns a canned analysis so the plumbing can be exercised
+ *     without an API key
  *
  *   node scripts/simulate-n8n.mjs &
- *   N8N_WEBHOOK_URL=http://localhost:5678/webhook/sentiment-analyze \
- *   N8N_WEBHOOK_SECRET=local-dev npm run start
- *
- * It is a test double. It never calls a model, and the analysis it returns is
- * synthetic — useful for exercising plumbing, useless as an analysis.
+ *   N8N_WEBHOOK_URL=http://localhost:5678/webhook/sentiment-analyze npm run dev
  */
 
 import { createServer } from "node:http";
@@ -31,8 +24,37 @@ import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const root = join(here, "..");
+
+function loadEnvFile(filePath, { override = false } = {}) {
+  let text;
+  try {
+    text = readFileSync(filePath, "utf8");
+  } catch {
+    return;
+  }
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq < 1) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    if (override || process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+loadEnvFile(join(root, ".env"));
+loadEnvFile(join(root, ".env.local"), { override: true });
+
 const workflow = JSON.parse(
-  readFileSync(join(here, "..", "n8n", "sentiment-analyzer.workflow.json"), "utf8"),
+  readFileSync(join(root, "n8n", "sentiment-analyzer.workflow.json"), "utf8"),
 );
 
 const nodesByName = new Map(workflow.nodes.map((n) => [n.name, n]));
@@ -77,6 +99,75 @@ async function runCodeNode(node, items, outputs) {
   return await runInNewContext(wrapped, sandbox, { timeout: 15_000, filename: node.name });
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function geminiBusy(status, json) {
+  const msg = String(json?.error?.message ?? "");
+  return (
+    status === 503 ||
+    status === 429 ||
+    /high demand|UNAVAILABLE|overloaded|RESOURCE_EXHAUSTED/i.test(msg)
+  );
+}
+
+function urlWithModel(url, model) {
+  return String(url).replace(/models\/[^/:]+/, `models/${model}`);
+}
+
+async function callGeminiOnce(url, request, apiKey) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 180_000);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "content-type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body: JSON.stringify(request),
+    });
+    const raw = await response.text();
+    let json;
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      json = { error: { message: raw.slice(0, 600), code: response.status } };
+    }
+    return { status: response.status, json };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function callGemini(url, request, apiKey) {
+  const preferred = (String(url).match(/models\/([^/:]+)/) ?? [])[1] || "gemini-2.5-flash";
+  const models = [...new Set([preferred, "gemini-2.5-flash", "gemini-2.0-flash"])];
+  let last = {
+    status: 502,
+    json: { error: { message: "Gemini did not respond.", code: 502 } },
+  };
+
+  for (const model of models) {
+    const modelUrl = urlWithModel(url, model);
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      last = await callGeminiOnce(modelUrl, request, apiKey);
+      if (last.status >= 200 && last.status < 300 && !last.json?.error) {
+        if (model !== preferred) {
+          last.json.modelVersion = last.json.modelVersion || model;
+        }
+        return last;
+      }
+      if (!geminiBusy(last.status, last.json)) return last;
+      if (attempt < 3) await sleep(1200 * attempt);
+    }
+  }
+
+  return last;
+}
+
 /** IF nodes in this workflow all test `$json.ok === true`. */
 function evaluateGate(items) {
   return items[0]?.json?.ok === true;
@@ -85,14 +176,14 @@ function evaluateGate(items) {
 /* ── the stubbed model call ──────────────────────────────────────────────── */
 
 /**
- * A Messages API response built from the turns the workflow just parsed.
+ * A Gemini generateContent response built from the turns the workflow just parsed.
  *
  * Quotes are sliced out of real turns, so the workflow's own evidence verifier
  * must score this at 100% grounding — which is exactly what makes running it
  * worthwhile. One deliberately fabricated quote is included so the gate has
  * something to catch, and the run proves it catches it.
  */
-function stubClaudeResponse(claudeRequest, context) {
+function stubGeminiResponse(geminiRequest, context) {
   const turns = context.turns;
   const at = (i) => turns[Math.min(i, turns.length - 1)];
   const quote = (i) => ({
@@ -211,13 +302,14 @@ function stubClaudeResponse(claudeRequest, context) {
   };
 
   return {
-    id: "msg_simulated",
-    type: "message",
-    role: "assistant",
-    model: claudeRequest.model,
-    stop_reason: "end_turn",
-    content: [{ type: "text", text: JSON.stringify(analysis) }],
-    usage: { input_tokens: 0, output_tokens: 0 },
+    candidates: [
+      {
+        content: { role: "model", parts: [{ text: JSON.stringify(analysis) }] },
+        finishReason: "STOP",
+      },
+    ],
+    modelVersion: context.model || "gemini-2.5-flash",
+    usageMetadata: { promptTokenCount: 0, candidatesTokenCount: 0, totalTokenCount: 0 },
   };
 }
 
@@ -254,11 +346,26 @@ async function execute(body, headers, log) {
     }
 
     if (node.type === "n8n-nodes-base.httpRequest") {
-      const request = items[0].json.claudeRequest;
-      const context = items[0].json.context;
-      items = [{ json: stubClaudeResponse(request, context) }];
-      outputs.set(node.name, items);
-      log.push(`  ${node.name} → STUBBED (no model call)`);
+      const request = items[0].json.geminiRequest;
+      const url = items[0].json.geminiUrl;
+      const context = {
+        ...items[0].json.context,
+        model: items[0].json.model,
+      };
+      if (!request) throw new Error("Gemini HTTP node expected $json.geminiRequest");
+
+      const apiKey = process.env.GEMINI_API_KEY?.trim();
+      if (apiKey) {
+        if (!url) throw new Error("Gemini HTTP node expected $json.geminiUrl");
+        const result = await callGemini(url, request, apiKey);
+        items = [{ json: result.json }];
+        outputs.set(node.name, items);
+        log.push(`  ${node.name} → Gemini HTTP ${result.status}`);
+      } else {
+        items = [{ json: stubGeminiResponse(request, context) }];
+        outputs.set(node.name, items);
+        log.push(`  ${node.name} → STUBBED (no GEMINI_API_KEY)`);
+      }
       current = nextNodes(node.name, 0)[0];
       continue;
     }
@@ -303,11 +410,14 @@ const server = createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
+  const live = Boolean(process.env.GEMINI_API_KEY?.trim());
   console.log(
     [
       `n8n workflow simulator listening on http://localhost:${PORT}/webhook/sentiment-analyze`,
       `  running ${workflow.nodes.filter((n) => n.type === "n8n-nodes-base.code").length} real Code stages from the generated workflow`,
-      `  the Claude HTTP call is stubbed — this returns a SYNTHETIC analysis`,
+      live
+        ? `  Gemini: LIVE (${process.env.GEMINI_MODEL || "default model"})`
+        : `  Gemini: STUBBED — set GEMINI_API_KEY in .env.local for a real analysis`,
       "",
     ].join("\n"),
   );
