@@ -1,0 +1,30 @@
+Agent: Hi, thanks for holding, this is Priya at Kestrel Home. Sorry about the wait, we're a bit busy this morning. Who am I speaking with?
+Customer: Tom Bradbury. And honestly the wait is the least of it.
+Agent: I'm sorry to hear that, Tom. What's happened?
+Customer: I ordered a dining table on the second of the month. Delivery was promised for the fourteenth. It's the twenty-first. I've taken two days off work for delivery slots that never turned up. Two days of annual leave, gone.
+Agent: Two days off for deliveries that didn't arrive. That's genuinely not acceptable and I'm sorry. Let me find the order — do you have the reference?
+Customer: K-H-7-7-3-1-0-2.
+Agent: Got it. Right, I can see it. And I can see why this went wrong, which at least means I can tell you something useful.
+Customer: Go on.
+Agent: The table shipped from our Leeds warehouse on the eleventh, correctly. It was scanned into the regional depot on the twelfth. Then it was scanned as "damaged in transit" on the thirteenth and pulled — but nobody actioned the replacement, and nobody told you. So the system kept generating delivery slots for a table that was sitting in a returns bay.
+Customer: So I sat in an empty house twice waiting for a table that had already been written off.
+Agent: Yes. That's exactly what happened, and it's a failure on our side at two points — the damage handling and the notification.
+Customer: At least you're being straight with me. The chat bot last week told me it was "out for delivery".
+Agent: It would have, because that's what the system said. I'm sorry.
+Customer: Okay. So where does that leave me?
+Agent: Two options and I'll be honest about both. Option one, I order a replacement from Leeds today. Current stock says three units, so that's real. Standard lead time puts it with you Thursday next week.
+Customer: That's another nine days.
+Agent: It is. Option two, there's an identical table in the Croydon showroom, ex-display. Same model, and I'd have to be straight with you, ex-display means it's been assembled and stood in a showroom, so there may be light marks. I can get that to you Saturday, and I'd take thirty percent off.
+Customer: How light is light?
+Agent: I can't see it from here, so I won't pretend. What I can do is call the showroom, have someone actually look at it, and ring you back within the hour with a straight answer. If it's marked up, we go with option one.
+Customer: Right. Yes. Do that. I appreciate you not just selling me the fast one.
+Agent: Of course. And separately from whichever table you end up with — the two days of leave. I'm applying a hundred and twenty pound credit to the account for the missed slots. That's not compensation for the annual leave, I know, but it's what I can do directly.
+Customer: That's more than I expected, to be fair.
+Agent: It's the missed-appointment policy, you're entitled to it. It should have been applied automatically after the first one.
+Customer: Of course it should. Okay. So you'll call me back within the hour?
+Agent: Within the hour, on this number, 07-double-seven, 4-1-2-9-0-3. And if the showroom table is fine I'll book Saturday delivery on the call.
+Customer: Morning or afternoon? I'm not doing another all-day window.
+Agent: Saturday slots are four hours, but I can request the eight-to-twelve and flag it as a priority rebook, which usually holds. I'll confirm the window when I ring back.
+Customer: Good. Thank you, Priya. Genuinely — this is the first time in three weeks someone's actually explained what happened.
+Agent: I'm sorry it took three weeks. I'll speak to you shortly.
+Customer: Thanks. Bye.

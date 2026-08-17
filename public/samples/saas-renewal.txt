@@ -1,0 +1,30 @@
+Account Manager: Morning Elena, thanks for making time. How's the quarter treating you?
+Customer: Busy. We're mid-migration on the data platform so everything's a bit on fire, but good busy.
+Account Manager: Good busy is the right kind. So — your renewal comes up on the thirtieth of next month, and I wanted to get ahead of it rather than send you a PDF three days before.
+Customer: Appreciated. Though I should say upfront, this one's going to get more scrutiny than last year.
+Account Manager: That's fair. Tell me where the scrutiny is coming from.
+Customer: Two places. Finance have put a ten percent reduction target on all software spend. And separately, our head of engineering has been running a proof-of-concept on an open-source alternative for the last six weeks.
+Account Manager: Okay. Let's take those separately. On the proof-of-concept — how's it going?
+Customer: Honestly? Better than I expected. It does about eighty percent of what you do.
+Account Manager: And the twenty percent?
+Customer: The audit trail and the SOC 2 evidence pack. They'd have to build that, and nobody's costed it properly.
+Account Manager: That's usually where these land. I'm not going to tell you the open-source option is bad, because it isn't. What I'd want you to weigh is that the twenty percent is the part your auditors look at.
+Customer: I know. That's the argument I'll be making internally. But I need something to take to finance, because "it's better" isn't going to survive that meeting.
+Account Manager: Understood. What's your current annual, and what would the ten percent target put you at?
+Customer: We're at forty-eight thousand. They want it at forty-three-two.
+Account Manager: Right. I can't get to forty-three-two on the same package without pulling something out, and I don't think you'd thank me for that. What I can do is a two-year term at forty-four-five a year, which is a seven percent reduction, locked, no uplift in year two.
+Customer: A two-year commitment while my head of engineering is actively evaluating alternatives is a hard sell.
+Account Manager: It is. So pair it with something: a twelve-month break clause at the eighteen-month mark. You get the two-year price, they get an exit if the POC wins.
+Customer: Hmm. That's more interesting. Finance would still be four and a half short of target.
+Account Manager: They would. Is the ten percent a hard floor or a portfolio target?
+Customer: Portfolio. Across all software.
+Account Manager: Then seven percent on your second-largest line item, locked for two years with a break clause, is a defensible contribution to a portfolio target. It's a stronger story than a one-year deal at a bigger discount that resets next year.
+Customer: That's a decent framing, actually. Let me think about how that lands.
+Account Manager: Take it to them. And I'd offer one more thing — the SOC 2 evidence pack. Would it help if I put together a one-pager on what replicating it actually costs? Engineering hours, ongoing maintenance, the lot. Not a sales document, just the numbers.
+Customer: Yes. That would genuinely help. If it's honest.
+Account Manager: It'll be honest. It'll probably say the build is cheaper than you think and the maintenance is more expensive than you think.
+Customer: That's about what I'd guess. Okay. Send me the one-pager and the two-year proposal with the break clause, and I'll get it in front of finance next week.
+Account Manager: I'll have both with you by Wednesday. And Elena — if the answer ends up being no, I'd rather know early than chase you in week four.
+Customer: I'll tell you either way. You've been straight with me, so.
+Account Manager: Thanks. Good luck with the migration.
+Customer: Thanks. Speak Wednesday.

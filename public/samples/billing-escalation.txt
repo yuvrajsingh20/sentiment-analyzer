@@ -1,0 +1,32 @@
+Agent (00:00): Good afternoon, you've reached Northwind Utilities billing support, this is Daniel. Can I take your name and account number please?
+Customer (00:07): Yeah. Marta Oyelaran. Account is 4-4-9-2-0-1-7.
+Agent (00:14): Thank you Ms Oyelaran, one moment while I pull that up. And just to confirm, the last four digits of the phone number on the account?
+Customer (00:22): 8-8-1-4.
+Agent (00:25): Perfect, thank you. Right, I have you here. How can I help today?
+Customer (00:31): This is the third time I've called about this. Third. I was charged twice in July, once on the second and again on the fourth, same amount, one hundred and forty-two pounds. I was told on the tenth it would be refunded within five working days. It is now the twenty-ninth.
+Agent (00:48): I'm sorry to hear that, I understand that's frustrating. Let me have a look at the transaction history.
+Customer (00:54): It's not frustrating, it's absurd. I've had two people tell me it's "in progress". What does that mean? Either you've sent the money or you haven't.
+Agent (01:04): I hear you. You're right that "in progress" isn't good enough after three weeks. I can see both charges on the account here, and I can see a refund request was raised on the tenth by a colleague.
+Customer (01:16): And?
+Agent (01:17): And it was raised against the wrong reference. It's sitting in a queue that nobody's monitoring. That's our error, not yours.
+Customer (01:25): Unbelievable.
+Agent (01:27): I know. I'm not going to defend it. What I can do right now is cancel that request and raise a priority one, which routes to a different team with a same-day SLA.
+Customer (01:37): You'll forgive me if I don't find "we'll raise another ticket" reassuring. That's exactly what the last person said.
+Agent (01:44): That's fair. Let me give you something more concrete than a ticket number. I'm going to raise it, and I'm going to give you my direct extension. If the refund isn't showing by Thursday close of business, you call that extension and ask for me by name.
+Customer (01:58): And if you're not there?
+Agent (02:00): Then whoever picks up can see the note I'm putting on the account right now, which says exactly that.
+Customer (02:06): Fine. What's the extension?
+Agent (02:08): 4-1-7-3. And the priority reference is R-P-1 dash 8-8-2-0-4.
+Customer (02:16): Let me write that down. R-P-1, 8-8-2-0-4.
+Agent (02:21): That's right.
+Customer (02:23): I want to be clear about something. If this isn't sorted by Thursday I'm going to the ombudsman, and I'm switching supplier. I've been with you eleven years.
+Agent (02:33): I understand, and I've noted eleven years on the account. I'd genuinely rather not lose you over a routing error.
+Customer (02:41): Then fix it.
+Agent (02:43): Understood. Is there anything else on the account I can look at while I have you?
+Customer (02:48): No. I just want my two hundred and eighty-four pounds back.
+Agent (02:52): One hundred and forty-two, refunded once — the duplicate charge. Let me just confirm that's the figure you're expecting.
+Customer (02:59): Yes. One forty-two. Obviously.
+Agent (03:02): Just wanted to make sure we were both looking at the same number so there's no third round of this. It's raised. You'll get an email confirmation in the next few minutes.
+Customer (03:11): We'll see.
+Agent (03:13): Thank you for your patience, Ms Oyelaran. Again, apologies for the delay on this one.
+Customer (03:18): Right. Goodbye.
