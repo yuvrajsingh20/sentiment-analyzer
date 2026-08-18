@@ -23,7 +23,9 @@ export function HistoryList({
   if (items.length === 0) {
     return (
       <p className="mt-2 type-body-sm text-[var(--ink-3)]">
-        Analyses you run are saved here so you can open them again.
+        No saved runs yet. Finish an analysis, then they show up here. On
+        Vercel that needs a working Atlas connection — local runs do not
+        appear on the live site, and each login has its own history.
       </p>
     );
   }

@@ -31,7 +31,10 @@ const COLLECTION = "history";
 const emptyStore = (): HistoryStore => ({ items: [] });
 
 export function historyDir(): string {
-  return process.env.HISTORY_DIR ?? join(process.cwd(), "data", "history");
+  if (process.env.HISTORY_DIR?.trim()) return process.env.HISTORY_DIR.trim();
+  // Vercel app disk is read-only; /tmp is writable for this instance only.
+  if (process.env.VERCEL) return join("/tmp", "sentiment-analyzer-history");
+  return join(process.cwd(), "data", "history");
 }
 
 function safeKey(username: string): string {

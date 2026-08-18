@@ -163,10 +163,10 @@ export function DashboardClient({
         }
 
         setResult(body.result);
+        void refreshHistory();
         if (body.historyId) {
           setHistoryId(body.historyId);
           setUrl(body.historyId);
-          void refreshHistory();
         }
       } catch {
         setError("Could not reach the server. Check your connection and retry.");
@@ -222,7 +222,19 @@ export function DashboardClient({
         {busy ? (
           <AnalysingState fileName={pendingName} />
         ) : result ? (
-          <Results result={result} focusTurn={focusTurn} onJump={jump} onClearFocus={() => setFocusTurn(null)} />
+          <>
+            <Results result={result} focusTurn={focusTurn} onJump={jump} onClearFocus={() => setFocusTurn(null)} />
+            <section className="mt-12">
+              <p className="eyebrow">History</p>
+              <h2 className="mt-2 type-headline">Previous analyses</h2>
+              <HistoryList
+                items={history}
+                activeId={historyId}
+                onOpen={(id) => void openHistory(id)}
+                onDelete={(id) => void removeHistory(id)}
+              />
+            </section>
+          </>
         ) : (
           <div>
             <UploadPanel onAnalyze={analyze} busy={busy} error={error} />

@@ -252,8 +252,9 @@ export function UploadPanel({
       </details>
 
       <p className="mt-8 type-caption text-[var(--ink-3)]">
-        Transcripts are sent to the analysis pipeline and held only for the
-        lifetime of the request. Nothing is written to disk or to a database.
+        Analyses are saved to your account history when sign-in and storage
+        are working. On Vercel that is MongoDB Atlas; locally it is a file
+        under data/history.
       </p>
     </div>
   );
