@@ -41,10 +41,12 @@ import type { AnalysisResult, SentimentLabel, SpeakerRole } from "@/lib/schema";
 export function DashboardClient({
   username,
   configuredPipeline,
+  geminiReady,
   initialId,
 }: {
   username: string;
   configuredPipeline: "n8n" | "direct";
+  geminiReady: boolean;
   initialId?: string;
 }) {
   const router = useRouter();
@@ -205,6 +207,7 @@ export function DashboardClient({
       <Header
         username={username}
         configuredPipeline={configuredPipeline}
+        geminiReady={geminiReady}
         result={result}
         live={liveAnalyze}
         n8nActive={n8nRun.active}
@@ -242,6 +245,7 @@ export function DashboardClient({
 function Header({
   username,
   configuredPipeline,
+  geminiReady,
   result,
   live,
   n8nActive,
@@ -250,6 +254,7 @@ function Header({
 }: {
   username: string;
   configuredPipeline: "n8n" | "direct";
+  geminiReady: boolean;
   result: AnalysisResult | null;
   live: boolean;
   n8nActive: number;
@@ -257,6 +262,7 @@ function Header({
   onSignOut: () => void;
 }) {
   const pipeline = result?.meta.pipeline ?? configuredPipeline;
+  const ready = geminiReady || pipeline === "direct" || pipeline === "n8n";
 
   return (
     <header className="sticky top-0 z-30 border-b border-[var(--hairline)] bg-[var(--plane)]">
@@ -293,15 +299,14 @@ function Header({
             aria-hidden
             className={`h-1.5 w-1.5 rounded-full ${live ? "sa-dot-live" : ""}`}
             style={{
-              background:
-                pipeline === "n8n"
-                  ? live
-                    ? "var(--ink-1)"
-                    : "var(--good)"
-                  : "var(--warning)",
+              background: ready
+                ? live
+                  ? "var(--ink-1)"
+                  : "var(--good)"
+                : "var(--warning)",
             }}
           />
-          {live ? "n8n running" : pipeline === "n8n" ? "n8n → Gemini" : "n8n not configured"}
+          {live ? "Gemini running" : ready ? "Gemini" : "Gemini not configured"}
         </span>
 
         {result && (
@@ -340,7 +345,7 @@ function Header({
         </div>
       </div>
       <WorkflowTimeline
-        configured={pipeline === "n8n"}
+        configured={ready}
         live={live}
         active={n8nActive}
         model={result?.meta.model}

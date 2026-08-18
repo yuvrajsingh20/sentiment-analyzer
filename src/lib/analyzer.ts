@@ -1,10 +1,10 @@
-import { DEFAULT_MODEL } from "./prompt";
 import {
-  n8nConfigured,
-  n8nMisconfiguredOnVercel,
-  n8nUrlLooksLikeTestWebhook,
-  n8nWebhookUrl,
-} from "./runtime";
+  DEFAULT_MODEL,
+  OUTPUT_JSON_SCHEMA,
+  SYSTEM_PROMPT,
+  buildUserPrompt,
+} from "./prompt";
+import { geminiConfigured } from "./runtime";
 import {
   AiAnalysisSchema,
   type AiAnalysis,
@@ -15,16 +15,15 @@ import {
 import { classifySpeakers, renderForModel } from "./transcript";
 import { verifyAnalysis, type VerificationOutcome } from "./verify";
 
-export { n8nConfigured } from "./runtime";
+export { geminiConfigured } from "./runtime";
 
 /**
  * Orchestration.
  *
- *   UI → n8n → Gemini → quality gate
+ *   UI → Gemini → quality gate
  *
- * Next.js never calls the model. The Gemini API key lives in n8n credentials.
- * Set `N8N_WEBHOOK_URL` to the workflow webhook (or `npm run n8n:simulate` for
- * a local double that runs the real Code stages and stubs only the HTTP call).
+ * Next.js calls generateContent with GEMINI_API_KEY. Every quote is then
+ * string-matched against the transcript before anything reaches the dashboard.
  */
 
 export class AnalysisError extends Error {
@@ -55,29 +54,27 @@ export type AnalyzeOutput = {
 
 /** One corrective retry. Beyond that the failure is not the kind a re-run fixes. */
 const MAX_ATTEMPTS = 2;
+const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 120_000;
 
-function fallbackModelId(): string {
+function modelId(): string {
   return process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
 }
 
-function buildRequestPayload(input: AnalyzeInput, retryFeedback?: string) {
-  const roles = classifySpeakers(input.turns);
+function apiKey(): string {
+  return process.env.GEMINI_API_KEY?.trim() || "";
+}
+
+function speakerRoles(turns: TranscriptTurn[]) {
+  const roles = classifySpeakers(turns);
   const seen = new Set<string>();
-  const speakerRoles: Array<{ speaker: string; role: string }> = [];
-  for (const t of input.turns) {
+  const roster: Array<{ speaker: string; role: string }> = [];
+  for (const t of turns) {
     const key = t.speaker.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    speakerRoles.push({ speaker: t.speaker, role: roles.get(key) ?? "other" });
+    roster.push({ speaker: t.speaker, role: roles.get(key) ?? "other" });
   }
-
-  return {
-    fileName: input.fileName,
-    turnCount: input.turns.length,
-    speakerRoles,
-    transcript: renderForModel(input.turns),
-    ...(retryFeedback ? { retryFeedback } : {}),
-  };
+  return roster;
 }
 
 /**
@@ -86,14 +83,12 @@ function buildRequestPayload(input: AnalyzeInput, retryFeedback?: string) {
  * The retry is not "ask again and hope". The failing checks are fed back to the
  * model as specific, quoted feedback — which turns are unlabelled, which quotes
  * could not be found — so the second attempt is a correction rather than a
- * re-roll. Both attempts still go through n8n; Next.js never calls Gemini.
+ * re-roll.
  */
 export async function analyze(input: AnalyzeInput): Promise<AnalyzeOutput> {
-  if (!n8nConfigured()) {
+  if (!geminiConfigured()) {
     throw new AnalysisError(
-      n8nMisconfiguredOnVercel()
-        ? "N8N_WEBHOOK_URL on Vercel points at localhost. Vercel cannot reach your laptop — paste the hosted n8n Production URL and redeploy."
-        : "N8N_WEBHOOK_URL is not set. Analysis is orchestrated through n8n (UI → n8n → Gemini), not called from Next.js. Point this at the imported workflow, or run `npm run n8n:simulate` for local plumbing.",
+      "GEMINI_API_KEY is not set. Add it in .env.local (local) or Vercel environment variables (production), then redeploy.",
       503,
     );
   }
@@ -103,7 +98,7 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeOutput> {
     null;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-    const raw = await analyzeViaN8n(input, feedback);
+    const raw = await analyzeViaGemini(input, feedback);
     const outcome = verifyAnalysis(raw.analysis, input.turns, attempt);
 
     if (!best || outcome.quality.score > best.outcome.quality.score) {
@@ -123,160 +118,242 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeOutput> {
   return {
     analysis: best.outcome.analysis,
     quality: { ...best.outcome.quality, attempts: feedback ? MAX_ATTEMPTS : 1 },
-    pipeline: "n8n",
+    pipeline: "direct",
     model: best.model,
     missingTurns: best.outcome.missingTurns,
     phantomTurns: best.outcome.phantomTurns,
   };
 }
 
-/* ── n8n ─────────────────────────────────────────────────────────────────── */
+type GeminiAnalysis = { analysis: AiAnalysis; model: string };
 
-type N8nAnalysis = { analysis: AiAnalysis; model: string };
-
-async function analyzeViaN8n(
+async function analyzeViaGemini(
   input: AnalyzeInput,
   retryFeedback?: string,
-): Promise<N8nAnalysis> {
-  const url = n8nWebhookUrl() as string;
-  if (n8nUrlLooksLikeTestWebhook(url)) {
-    throw new AnalysisError(
-      "N8N_WEBHOOK_URL is the n8n Test URL. Activate the workflow and copy the Production URL from the Webhook node.",
-      503,
-    );
+): Promise<GeminiAnalysis> {
+  const preferred = modelId();
+  const models = [
+    ...new Set([preferred, DEFAULT_MODEL, "gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"]),
+  ];
+
+  const generationConfig = {
+    temperature: 0.2,
+    maxOutputTokens: 32768,
+    responseMimeType: "application/json" as const,
+    responseJsonSchema: OUTPUT_JSON_SCHEMA,
+  };
+
+  const userPrompt = buildUserPrompt({
+    fileName: input.fileName,
+    turnCount: input.turns.length,
+    speakerRoles: speakerRoles(input.turns),
+    transcript: renderForModel(input.turns),
+    retryFeedback,
+  });
+
+  const requestBody = {
+    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+    generationConfig,
+  };
+
+  let lastError: AnalysisError | null = null;
+
+  for (const model of models) {
+    for (const schema of [true, false]) {
+      const body = schema
+        ? requestBody
+        : {
+            ...requestBody,
+            generationConfig: {
+              temperature: 0.2,
+              maxOutputTokens: 32768,
+              responseMimeType: "application/json",
+            },
+          };
+      try {
+        const payload = await callGemini(model, body);
+        return {
+          analysis: parseAnalysis(payload.analysis, "Gemini API"),
+          model: payload.model || model,
+        };
+      } catch (error) {
+        if (error instanceof AnalysisError) {
+          lastError = error;
+          const blob = `${error.message} ${error.detail ?? ""}`;
+          if (schema && /INVALID_ARGUMENT|responseJsonSchema|response_schema|unknown name/i.test(blob)) {
+            continue;
+          }
+          if (error.status === 429 || error.status === 503) break;
+          if (/not found|NOT_FOUND|is not supported/i.test(blob)) break;
+        }
+        throw error;
+      }
+    }
   }
-  const timeoutMs = Number(process.env.N8N_TIMEOUT_MS) || 120_000;
-  const payload = buildRequestPayload(input, retryFeedback);
 
+  throw lastError ?? new AnalysisError("Gemini did not return an analysis.", 502);
+}
+
+function geminiUrl(model: string): string {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryable(status: number, blob: string): boolean {
+  return (
+    status === 429 ||
+    status === 503 ||
+    /RESOURCE_EXHAUSTED|high demand|UNAVAILABLE|overloaded|busy right now/i.test(blob)
+  );
+}
+
+async function callGeminiOnce(
+  model: string,
+  body: unknown,
+): Promise<{ status: number; json: Record<string, unknown> }> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  let response: Response;
+  const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
   try {
-    response = await fetch(url, {
+    const response = await fetch(geminiUrl(model), {
       method: "POST",
       signal: controller.signal,
       headers: {
         "content-type": "application/json",
-        ...(process.env.N8N_WEBHOOK_SECRET
-          ? { "x-api-key": process.env.N8N_WEBHOOK_SECRET }
-          : {}),
+        "x-goog-api-key": apiKey(),
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(body),
     });
+    const raw = await response.text();
+    let json: Record<string, unknown>;
+    try {
+      json = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      json = { error: { message: raw.slice(0, 600), code: response.status } };
+    }
+    return { status: response.status, json };
   } catch (error) {
     const aborted = error instanceof Error && error.name === "AbortError";
     throw new AnalysisError(
       aborted
-        ? `The n8n workflow did not respond within ${Math.round(timeoutMs / 1000)}s.`
-        : "Could not reach the n8n workflow.",
+        ? `Gemini did not respond within ${Math.round(GEMINI_TIMEOUT_MS / 1000)}s.`
+        : "Could not reach the Gemini API.",
       504,
       error instanceof Error ? error.message : undefined,
     );
   } finally {
     clearTimeout(timer);
   }
-
-  const raw = await response.text();
-
-  if (!response.ok) {
-    throw explainN8nError(response.status, raw);
-  }
-
-  let body: unknown;
-  try {
-    body = JSON.parse(raw);
-  } catch {
-    throw new AnalysisError(
-      "The n8n workflow returned a non-JSON response.",
-      502,
-      raw.slice(0, 600),
-    );
-  }
-
-  const unwrapped = unwrapN8nEnvelope(body);
-  return {
-    analysis: parseAnalysis(unwrapped.analysis, "n8n workflow"),
-    model: unwrapped.model || fallbackModelId(),
-  };
 }
 
-function explainN8nError(httpStatus: number, raw: string): AnalysisError {
-  let parsed: { error?: unknown; detail?: unknown } | null = null;
-  try {
-    parsed = JSON.parse(raw) as { error?: unknown; detail?: unknown };
-  } catch {
-    parsed = null;
+async function callGemini(
+  model: string,
+  body: unknown,
+): Promise<{ analysis: unknown; model: string }> {
+  let last: { status: number; json: Record<string, unknown> } | null = null;
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    last = await callGeminiOnce(model, body);
+    const err = last.json.error;
+    const errObj = err && typeof err === "object" ? (err as Record<string, unknown>) : null;
+    const msg = String(errObj?.message ?? "");
+    const blob = `${msg} ${JSON.stringify(last.json).slice(0, 400)}`;
+
+    if (last.status >= 200 && last.status < 300 && !err) {
+      return unwrapGemini(last.json, model);
+    }
+
+    if (isRetryable(last.status, blob) && attempt < 3) {
+      await sleep(1200 * attempt);
+      continue;
+    }
+
+    throw explainGeminiError(last.status, blob, msg);
   }
 
-  const errorText = typeof parsed?.error === "string" ? parsed.error : "";
-  const detailText = typeof parsed?.detail === "string" ? parsed.detail : "";
-  const blob = `${errorText} ${detailText} ${raw}`;
+  throw explainGeminiError(last?.status ?? 502, "", "Gemini did not respond.");
+}
 
+function explainGeminiError(httpStatus: number, blob: string, msg: string): AnalysisError {
   if (httpStatus === 429 || /rate limited|RESOURCE_EXHAUSTED/i.test(blob)) {
-    return new AnalysisError(
-      "Gemini is rate limited. Wait a moment and try again.",
-      429,
-    );
+    return new AnalysisError("Gemini is rate limited. Wait a moment and try again.", 429);
   }
-  if (
-    httpStatus === 404 ||
-    /not registered|webhook .*not registered|must be active/i.test(blob)
-  ) {
+  if (httpStatus === 503 || /high demand|UNAVAILABLE|overloaded|busy right now/i.test(blob)) {
+    return new AnalysisError("Gemini is busy right now. Wait a few seconds and try again.", 503);
+  }
+  if (httpStatus === 401 || httpStatus === 403 || /API key|PERMISSION_DENIED|invalid/i.test(blob)) {
     return new AnalysisError(
-      "n8n did not register this webhook. Activate the workflow and use the Production URL, not the Test URL.",
+      "Gemini rejected the API key. Check GEMINI_API_KEY in Vercel / .env.local.",
       502,
+      msg.slice(0, 280) || undefined,
     );
-  }
-  if (
-    httpStatus === 503 ||
-    /high demand|UNAVAILABLE|overloaded|busy right now/i.test(blob)
-  ) {
-    return new AnalysisError(
-      "Gemini is busy right now. Wait a few seconds and try again.",
-      503,
-    );
-  }
-  if (errorText && !errorText.startsWith("{")) {
-    return new AnalysisError(errorText, httpStatus >= 400 ? httpStatus : 502);
   }
   return new AnalysisError(
-    "The analysis workflow failed. Try again.",
+    "The Gemini API returned an error.",
     httpStatus >= 400 ? httpStatus : 502,
+    msg.slice(0, 280) || undefined,
   );
 }
 
-/**
- * Accept `{ analysis, diagnostics }`, a bare analysis object, or n8n's
- * array-of-items envelope — all three turn up depending on how Respond to
- * Webhook is set.
- */
-function unwrapN8nEnvelope(body: unknown): { analysis: unknown; model?: string } {
-  let current = body;
-  if (Array.isArray(current)) current = current[0];
-  if (current && typeof current === "object") {
-    const obj = current as Record<string, unknown>;
-    if ("json" in obj) current = obj.json;
+function unwrapGemini(
+  response: Record<string, unknown>,
+  fallbackModel: string,
+): { analysis: unknown; model: string } {
+  const candidates = Array.isArray(response.candidates) ? response.candidates : [];
+  const candidate = candidates[0] as Record<string, unknown> | undefined;
+  if (!candidate) {
+    throw new AnalysisError("The Gemini API returned no candidates.", 502);
   }
 
-  if (current && typeof current === "object") {
-    const obj = current as Record<string, unknown>;
-    const diagnostics =
-      obj.diagnostics && typeof obj.diagnostics === "object"
-        ? (obj.diagnostics as Record<string, unknown>)
-        : undefined;
-    const model =
-      (typeof diagnostics?.model === "string" && diagnostics.model) ||
-      (typeof obj.model === "string" && obj.model) ||
-      undefined;
-
-    if ("analysis" in obj) {
-      return { analysis: obj.analysis, model };
-    }
-    return { analysis: current, model };
+  const finish = String(candidate.finishReason ?? candidate.finish_reason ?? "");
+  if (finish === "MAX_TOKENS") {
+    throw new AnalysisError(
+      "The response was truncated before the analysis was complete. Try a shorter transcript.",
+      413,
+    );
+  }
+  if (finish === "SAFETY" || finish === "RECITATION" || finish === "PROHIBITED_CONTENT") {
+    throw new AnalysisError("The model declined to analyse this transcript.", 422, finish);
   }
 
-  return { analysis: current };
+  const content = candidate.content as Record<string, unknown> | undefined;
+  const parts = Array.isArray(content?.parts) ? content.parts : [];
+  const text = parts
+    .map((part) =>
+      part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string"
+        ? (part as { text: string }).text
+        : "",
+    )
+    .join("");
+
+  if (!text.trim()) {
+    throw new AnalysisError("The model returned no analysis payload.", 502);
+  }
+
+  let analysis: unknown;
+  try {
+    analysis = JSON.parse(extractJson(text));
+  } catch (error) {
+    throw new AnalysisError(
+      "The model returned malformed JSON.",
+      502,
+      error instanceof Error ? error.message : undefined,
+    );
+  }
+
+  const model =
+    (typeof response.modelVersion === "string" && response.modelVersion) || fallbackModel;
+
+  return { analysis, model };
+}
+
+function extractJson(text: string): string {
+  const trimmed = text.trim();
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  return fence ? fence[1].trim() : trimmed;
 }
 
 function parseAnalysis(candidate: unknown, source: string): AiAnalysis {

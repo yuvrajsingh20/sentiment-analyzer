@@ -20,7 +20,7 @@ type Jump = (turnIndex: number) => void;
 /**
  * The three required outputs, readable without scrolling: overall
  * Positive/Neutral/Negative, sentence-level counts, and that a call KPI board
- * follows. Architecture sits here so a reviewer sees UI → n8n → AI immediately.
+ * follows. Architecture sits here so a reviewer sees UI → Gemini immediately.
  */
 export function CallSnapshot({ result }: { result: AnalysisResult }) {
   const overall = result.analysis.overall.sentiment as SentimentLabel;
@@ -28,7 +28,7 @@ export function CallSnapshot({ result }: { result: AnalysisResult }) {
   const lead = [...result.analysis.emotions].sort(
     (a, b) => b.intensity - a.intensity,
   )[0];
-  const orchestrated = result.meta.pipeline === "n8n";
+  const viaGemini = result.meta.pipeline === "direct" || result.meta.pipeline === "n8n";
 
   const tiles = [
     {
@@ -51,9 +51,9 @@ export function CallSnapshot({ result }: { result: AnalysisResult }) {
     },
     {
       eyebrow: "Architecture",
-      value: orchestrated ? "n8n → Gemini" : "n8n not configured",
+      value: viaGemini ? "Gemini" : "Gemini not configured",
       hint: result.meta.model,
-      color: orchestrated ? "var(--good-ink)" : TONE_COLOR.warning,
+      color: viaGemini ? "var(--good-ink)" : TONE_COLOR.warning,
     },
   ];
 

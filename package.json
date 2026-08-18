@@ -2,7 +2,7 @@
   "name": "sentiment-analyzer",
   "version": "1.0.0",
   "private": true,
-  "description": "Upload a call transcript, orchestrate analysis through n8n + Gemini, and read the result as a KPI dashboard.",
+  "description": "Upload a call transcript, analyse it with Gemini, and read the result as a KPI dashboard.",
   "scripts": {
     "dev": "next dev",
     "build": "node scripts/build-n8n-workflow.mjs && next build",

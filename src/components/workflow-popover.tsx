@@ -9,7 +9,7 @@ import {
 } from "@/lib/n8n-stages";
 
 /**
- * Horizontal n8n workflow, parked under the header so it never covers the page.
+ * Horizontal analysis pipeline, parked under the header so it never covers the page.
  * The fill travels left → right as stages complete; Gemini holds while the model runs.
  */
 
@@ -50,22 +50,22 @@ export function WorkflowTimeline({
   }, [active]);
 
   const headline = !configured
-    ? "n8n not configured"
+    ? "Gemini not configured"
     : live
       ? current
         ? current.label
-        : "Workflow running"
+        : "Analysis running"
       : active >= N8N_STAGES.length
-        ? "Workflow complete"
-        : "n8n → Gemini";
+        ? "Analysis complete"
+        : "UI → Gemini";
 
   const sub = !configured
-    ? "Set N8N_WEBHOOK_URL"
+    ? "Set GEMINI_API_KEY"
     : live && current
       ? current.id === "gemini"
         ? "Waiting on generateContent…"
         : current.detail
-      : model ?? "UI → n8n → Gemini";
+      : model ?? "UI → Gemini";
 
   return (
     <div className="border-t border-[var(--hairline)] bg-[var(--surface-1)]">
@@ -95,7 +95,7 @@ export function WorkflowTimeline({
           <ol
             ref={railRef}
             className="relative flex min-w-[720px] items-start justify-between gap-1"
-            aria-label="n8n workflow"
+            aria-label="analysis pipeline"
           >
             <span
               aria-hidden

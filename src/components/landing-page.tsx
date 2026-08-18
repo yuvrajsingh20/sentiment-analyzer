@@ -189,8 +189,8 @@ function HowItWorks() {
     },
     {
       n: "02",
-      title: "n8n orchestrates Gemini",
-      body: "UI → n8n → Gemini. The workflow validates the transcript, calls the model, then checks every quote before anything reaches the dashboard.",
+      title: "Gemini analyses the call",
+      body: "The transcript is sent to Gemini as structured JSON. Every quoted claim is then checked against the original turns before anything reaches the dashboard.",
     },
     {
       n: "03",

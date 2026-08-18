@@ -15,11 +15,10 @@ const MIN_CHARS = 40;
 /**
  * The pipeline, end to end:
  *
- *   read upload → normalise → parse into turns → n8n (validate → Gemini → gate)
- *   → schema-validate → verify evidence → quality gate → reconcile
- *   → compute metrics → respond
+ *   read upload → normalise → parse into turns → Gemini → schema-validate
+ *   → verify evidence → quality gate → reconcile → compute metrics → respond
  *
- * Next.js never calls the model. The Gemini API key lives in n8n credentials.
+ * The Gemini API key lives in GEMINI_API_KEY (Vercel / .env.local).
  */
 export async function POST(request: Request) {
   const startedAt = Date.now();

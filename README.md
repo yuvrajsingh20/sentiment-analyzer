@@ -6,12 +6,11 @@ sentiment, emotion detection, a call-centre KPI board, and a summary — with
 against the transcript before you see it.**
 
 ```
-Next.js  ──►  n8n  ──►  Gemini  ──►  quality gate  ──►  dashboard
- login         auth      structured    evidence          evidence
- upload        validate  JSON output   verification      explorer
- dashboard     normalise               coverage /        KPI board
-               parse                   grounding         transcript
-               KPI engine
+Next.js  ──►  Gemini  ──►  quality gate  ──►  dashboard
+ login         structured    evidence          evidence
+ upload        JSON output   verification      explorer
+ dashboard                   coverage /        KPI board
+                             grounding         transcript
 ```
 
 ---
@@ -42,7 +41,7 @@ quoted back to the model.
 
 ```bash
 npm install
-cp .env.example .env.local        # set AUTH_*, GOOGLE_*, N8N_WEBHOOK_URL
+cp .env.example .env.local        # set AUTH_*, GEMINI_API_KEY
 npm run dev                       # http://localhost:3000
 ```
 
@@ -70,10 +69,9 @@ account at `/signup`, or use `AUTH_USERNAME` / `AUTH_PASSWORD`, then drop in a
    ```
 5. Restart `npm run dev`.
 
-Analysis is **always** `UI → n8n → Gemini`. Set `N8N_WEBHOOK_URL` to the
-imported workflow (or `npm run n8n:simulate` for local plumbing). The Gemini
-API key lives in n8n credentials, not in Next.js. The header chip shows
-whether the webhook is configured.
+Analysis is `UI → Gemini → quality gate`. Set `GEMINI_API_KEY` in `.env.local`
+(and on Vercel for production). The header chip shows whether the key is
+configured.
 
 ### Run everything the CI would
 
@@ -145,13 +143,13 @@ Every gate's false branch routes to a Respond node that returns a real HTTP
 status (401 / 400 / 413 / 422 / 502), because the app's fetch layer distinguishes
 them.
 
-### Why there is no Next.js → Gemini path
+### The analysis path
 
-`src/lib/analyzer.ts` posts the transcript to the n8n webhook and nothing else.
-If `N8N_WEBHOOK_URL` is unset, analysis returns 503 rather than calling Gemini
-from the app. That is the assignment architecture: **n8n is the orchestrator,
-Gemini is the analyst, Next.js is the product.** Local demo without n8n uses
-`npm run n8n:simulate`, which still runs the real Code stages.
+`src/lib/analyzer.ts` posts the transcript to Gemini `generateContent` and
+nothing else. If `GEMINI_API_KEY` is unset, analysis returns 503. After the
+model replies, the app schema-validates the JSON, verifies every cited quote
+against the transcript, and retries once with the specific failures quoted
+back when the quality gate fails.
 
 ---
 
@@ -331,41 +329,20 @@ See `.env.example`. The essentials:
 | `AUTH_USERNAME` / `AUTH_PASSWORD` | demo login (`analyst` / `change-me`) |
 | `GOOGLE_CLIENT_ID` | enables Continue with Google |
 | `AUTH_SECRET` | HMAC key for the session cookie — **required in production** |
-| `N8N_WEBHOOK_URL` | **required** — route every analysis through n8n |
-| `N8N_WEBHOOK_SECRET` | shared secret sent as `x-api-key` |
-
-The Gemini API key is **not** an app env var. It is an n8n Header Auth
-credential.
-
-### n8n setup
-
-1. Import `n8n/sentiment-analyzer.workflow.json`.
-2. Create a **Header Auth** credential named `Gemini API`: name
-   `x-goog-api-key`, value your Gemini API key. Attach it on the
-   **Gemini — analyse call** node if import did not map it.
-3. Optionally set `N8N_WEBHOOK_SECRET` (and `GEMINI_MODEL`) in n8n
-   **Variables** (Cloud) or environment (self-hosted).
-4. Toggle the workflow **Active**. Copy the Webhook node's **Production URL**
-   (not the Test URL) — it looks like
-   `https://<instance>.app.n8n.cloud/webhook/sentiment-analyze`.
+| `GEMINI_API_KEY` | **required** — Gemini `generateContent` |
+| `GEMINI_MODEL` | optional, default `gemini-2.5-flash` |
+| `MONGODB_URI` | Atlas, if you want saved history |
 
 ### Deployment (Vercel)
-
-The app on Vercel and the n8n workflow are two services. Combining them is
-one environment variable:
 
 1. Vercel → Settings → Environment Variables (Production), then **Redeploy**:
 
    | Variable | Value |
    |---|---|
-   | `N8N_WEBHOOK_URL` | Production URL from the n8n Webhook node |
-   | `N8N_WEBHOOK_SECRET` | same string as in n8n, if you set one |
+   | `GEMINI_API_KEY` | key from [Google AI Studio](https://aistudio.google.com/apikey) |
    | `AUTH_SECRET` | `openssl rand -base64 32` — login fails without this |
    | `MONGODB_URI` / `MONGODB_DB` | Atlas, if you want history |
    | `GOOGLE_CLIENT_ID` | Continue with Google |
-
-   Do **not** set `N8N_WEBHOOK_URL` to `localhost`. Vercel cannot reach your
-   laptop. Do **not** put `GEMINI_API_KEY` on Vercel — it belongs in n8n.
 
 2. Atlas → Network Access: allow Vercel (`0.0.0.0/0` is fine for a demo).
 3. Google Cloud OAuth: add `https://<your-app>.vercel.app` as an Authorized
@@ -373,7 +350,7 @@ one environment variable:
 
 The analysis route declares `maxDuration = 300`. A long transcript can take
 30–90 seconds, so a plan with a matching function timeout is needed. Confirm
-wiring with `GET /api/status` (`n8n` must be `true`).
+wiring with `GET /api/status` (`gemini` and `authSecret` must be `true`).
 
 ---
 
