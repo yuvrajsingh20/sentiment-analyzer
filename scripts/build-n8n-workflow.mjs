@@ -332,7 +332,7 @@ if (missing.length > 0) {
 if (!Array.isArray(analysis.utterances) || analysis.utterances.length === 0) {
   return fail(502, 'The analysis contains no per-turn labels.');
 }
-for (const group of ['customer', 'agent', 'conversation']) {
+for (const group of ['customer', 'agent', 'company', 'conversation']) {
   if (!analysis.kpis || typeof analysis.kpis[group] !== 'object') {
     return fail(502, \`The analysis is missing the "\${group}" KPI group.\`);
   }
@@ -403,7 +403,7 @@ for (const e of analysis.emotions ?? []) e.evidence = check(e.evidence);
 for (const a of analysis.actionItems ?? []) a.evidence = check(a.evidence);
 for (const c of analysis.coaching ?? []) c.evidence = check(c.evidence);
 
-for (const group of ['customer', 'agent', 'conversation']) {
+for (const group of ['customer', 'agent', 'company', 'conversation']) {
   const kpis = analysis.kpis?.[group] ?? {};
   for (const [key, claim] of Object.entries(kpis)) {
     if (key === 'topics' || key === 'complianceChecks') continue;
@@ -490,7 +490,7 @@ const pair = agentWords + customerWords;
 const round = (n) => Math.round(n * 1000) / 1000;
 
 const claims = [];
-for (const group of ['customer', 'agent', 'conversation']) {
+for (const group of ['customer', 'agent', 'company', 'conversation']) {
   for (const [key, claim] of Object.entries(input.analysis?.kpis?.[group] ?? {})) {
     if (key === 'topics' || key === 'complianceChecks') continue;
     if (claim && typeof claim === 'object') claims.push({ group, key, claim });
@@ -549,7 +549,7 @@ const turnCoverage =
 
 // Flatten every claim across the three KPI groups.
 const claims = [];
-for (const group of ['customer', 'agent', 'conversation']) {
+for (const group of ['customer', 'agent', 'company', 'conversation']) {
   for (const [key, claim] of Object.entries(analysis.kpis?.[group] ?? {})) {
     if (key === 'topics' || key === 'complianceChecks') continue;
     if (claim && typeof claim === 'object') claims.push(claim);

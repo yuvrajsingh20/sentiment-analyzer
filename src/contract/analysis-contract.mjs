@@ -11,7 +11,7 @@
  * After editing this file, run `npm run build:workflow`.
  */
 
-export const DEFAULT_MODEL = "gemini-2.5-flash";
+export const DEFAULT_MODEL = "gemini-3.5-flash-lite";
 
 /* ─────────────────────────────────────────────────────────────────────────
    System prompt
@@ -92,6 +92,20 @@ Weight the customer's turns above the agent's, and the closing above the opening
 - **resolutionEffectiveness** (0–1) — how well what they did actually addresses the problem.
 
 If there is no identifiable agent in the transcript, abstain on all seven.
+
+## Company
+Score the *company* this call represents — brand, process, policy, and commercial exposure — separately from the agent who happened to take it. An excellent agent cannot rescue a broken company process, and a clumsy agent does not make the company itself the villain.
+
+- **brandSentiment** — how the company comes across after this call (positive / neutral / negative).
+- **slaAdherence** (0–1) — did the company meet a reasonable service standard? Repeat contacts ("third time"), missed callbacks, long unexplained holds lower this.
+- **processEffectiveness** (0–1) — did company systems and process help, or trap the customer (transfers, tickets with no progress, "I can't see that in the system").
+- **policyClarity** (0–1) — was company policy explained fairly and clearly, or used as a wall.
+- **knowledgeAccuracy** (0–1) — was the information the company gave actually correct and consistent.
+- **reputationalRisk** (0–1) — chance this call becomes a complaint, review, regulator, or social post.
+- **revenueAtRisk** (0–1) — refund, cancellation, chargeback, lost renewal, or withheld payment.
+- **repeatContactRisk** (0–1) — probability the customer has to call again about the same issue.
+
+Abstain on a company KPI when the transcript has no signal for it. Do not copy the agent scores into this group.
 
 ## Conversation
 - **resolutionStatus** — was the customer's actual problem solved on this call? Abstain when the call is not a support interaction.
@@ -258,6 +272,34 @@ export const OUTPUT_JSON_SCHEMA = obj({
       ownership: unitClaim("Taking responsibility versus deflecting."),
       resolutionEffectiveness: unitClaim(
         "How well what the agent did actually addresses the problem.",
+      ),
+    }),
+
+    company: obj({
+      brandSentiment: claim(
+        enm(["positive", "neutral", "negative"]),
+        "How the company comes across after this call.",
+      ),
+      slaAdherence: unitClaim(
+        "Did the company meet a reasonable service standard. Repeat contacts and missed callbacks lower this.",
+      ),
+      processEffectiveness: unitClaim(
+        "Did company systems and process help, or trap the customer.",
+      ),
+      policyClarity: unitClaim(
+        "Was company policy explained fairly and clearly, or used as a wall.",
+      ),
+      knowledgeAccuracy: unitClaim(
+        "Was the information the company gave actually correct and consistent.",
+      ),
+      reputationalRisk: unitClaim(
+        "Chance this call becomes a complaint, review, regulator, or social post.",
+      ),
+      revenueAtRisk: unitClaim(
+        "Refund, cancellation, chargeback, lost renewal, or withheld payment.",
+      ),
+      repeatContactRisk: unitClaim(
+        "Probability the customer has to call again about the same issue.",
       ),
     }),
 

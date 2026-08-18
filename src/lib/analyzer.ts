@@ -1,12 +1,12 @@
 import {
   DEFAULT_MODEL,
-  OUTPUT_JSON_SCHEMA,
   SYSTEM_PROMPT,
   buildUserPrompt,
 } from "./prompt";
 import { geminiConfigured } from "./runtime";
 import {
   AiAnalysisSchema,
+  emptyKpis,
   type AiAnalysis,
   type AnalysisPipeline,
   type QualityReport,
@@ -54,7 +54,14 @@ export type AnalyzeOutput = {
 
 /** One corrective retry. Beyond that the failure is not the kind a re-run fixes. */
 const MAX_ATTEMPTS = 2;
-const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 120_000;
+const GEMINI_TIMEOUT_MS = Number(process.env.GEMINI_TIMEOUT_MS) || 90_000;
+
+const FALLBACK_MODELS = [
+  "gemini-3.5-flash-lite",
+  "gemini-3.5-flash",
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+];
 
 function modelId(): string {
   return process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
@@ -132,67 +139,112 @@ async function analyzeViaGemini(
   retryFeedback?: string,
 ): Promise<GeminiAnalysis> {
   const preferred = modelId();
-  const models = [
-    ...new Set([preferred, DEFAULT_MODEL, "gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"]),
-  ];
+  const queue = [...new Set([preferred, ...FALLBACK_MODELS])];
+  const tried = new Set<string>();
 
-  const generationConfig = {
-    temperature: 0.2,
-    maxOutputTokens: 32768,
-    responseMimeType: "application/json" as const,
-    responseJsonSchema: OUTPUT_JSON_SCHEMA,
-  };
-
-  const userPrompt = buildUserPrompt({
+  const userPrompt = `${buildUserPrompt({
     fileName: input.fileName,
     turnCount: input.turns.length,
     speakerRoles: speakerRoles(input.turns),
     transcript: renderForModel(input.turns),
     retryFeedback,
-  });
+  })}
 
-  const requestBody = {
-    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-    generationConfig,
+Return one JSON object with these top-level keys: overall, summary, utterances, emotions, kpis, keyMoments, actionItems, coaching, risks, limitations.
+kpis must contain customer, agent, company, conversation. Keep quotes short.`;
+
+  const generationConfig = {
+    temperature: 0.2,
+    maxOutputTokens: 8192,
+    responseMimeType: "application/json",
+  };
+
+  const requestFor = (model: string, thinking: boolean) => {
+    const gemini3 = /gemini-3/i.test(model);
+    return {
+      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+      generationConfig: thinking
+        ? {
+            ...generationConfig,
+            thinkingConfig: gemini3
+              ? { thinkingLevel: "minimal" }
+              : { thinkingBudget: 0 },
+          }
+        : generationConfig,
+    };
   };
 
   let lastError: AnalysisError | null = null;
+  let timeoutFallbacks = 0;
 
-  for (const model of models) {
-    for (const schema of [true, false]) {
-      const body = schema
-        ? requestBody
-        : {
-            ...requestBody,
-            generationConfig: {
-              temperature: 0.2,
-              maxOutputTokens: 32768,
-              responseMimeType: "application/json",
-            },
-          };
-      try {
-        const payload = await callGemini(model, body);
-        return {
-          analysis: parseAnalysis(payload.analysis, "Gemini API"),
-          model: payload.model || model,
-        };
-      } catch (error) {
-        if (error instanceof AnalysisError) {
-          lastError = error;
-          const blob = `${error.message} ${error.detail ?? ""}`;
-          if (schema && /INVALID_ARGUMENT|responseJsonSchema|response_schema|unknown name/i.test(blob)) {
-            continue;
+  while (queue.length) {
+    const model = queue.shift()!;
+    if (tried.has(model)) continue;
+    tried.add(model);
+
+    try {
+      console.info(`[gemini] ${model}`);
+      const payload = await callGeminiWithThinkingFallback(model, (thinking) =>
+        requestFor(model, thinking),
+      );
+      return {
+        analysis: parseAnalysis(payload.analysis, "Gemini API"),
+        model: payload.model || model,
+      };
+    } catch (error) {
+      if (error instanceof AnalysisError) {
+        lastError = error;
+        const blob = `${error.message} ${error.detail ?? ""}`;
+        if (isModelUnavailable(error.status, blob)) {
+          const replacement = suggestedReplacement(blob);
+          if (replacement && !tried.has(replacement) && !queue.includes(replacement)) {
+            console.info(`[gemini] ${model} retired → ${replacement}`);
+            queue.unshift(replacement);
           }
-          if (error.status === 429 || error.status === 503) break;
-          if (/not found|NOT_FOUND|is not supported/i.test(blob)) break;
+          continue;
         }
-        throw error;
+        if (error.status === 504) {
+          timeoutFallbacks += 1;
+          if (timeoutFallbacks >= 2) break;
+          continue;
+        }
+        if (error.status === 429 || error.status === 503) {
+          continue;
+        }
       }
+      throw error;
     }
   }
 
   throw lastError ?? new AnalysisError("Gemini did not return an analysis.", 502);
+}
+
+async function callGeminiWithThinkingFallback(
+  model: string,
+  requestFor: (thinking: boolean) => unknown,
+): Promise<{ analysis: unknown; model: string }> {
+  try {
+    return await callGemini(model, requestFor(true));
+  } catch (error) {
+    if (!(error instanceof AnalysisError) || error.status !== 400) throw error;
+    console.info(`[gemini] ${model} retry without thinkingConfig`);
+    return await callGemini(model, requestFor(false));
+  }
+}
+
+function isModelUnavailable(status: number, blob: string): boolean {
+  return (
+    status === 404 ||
+    /not found|NOT_FOUND|no longer available|not available to new users|is not supported/i.test(
+      blob,
+    )
+  );
+}
+
+function suggestedReplacement(blob: string): string | null {
+  const match = blob.match(/use `?models\/([a-z0-9._-]+)`?/i);
+  return match?.[1] ?? null;
 }
 
 function geminiUrl(model: string): string {
@@ -233,6 +285,15 @@ async function callGeminiOnce(
       json = JSON.parse(raw) as Record<string, unknown>;
     } catch {
       json = { error: { message: raw.slice(0, 600), code: response.status } };
+    }
+    if (response.status >= 400) {
+      const err = json.error;
+      const msg =
+        err && typeof err === "object" && "message" in err
+          ? String((err as { message?: unknown }).message)
+          : raw.slice(0, 400);
+      console.error(`[gemini] ${model} HTTP ${response.status}: ${msg}`);
+      console.error(`[gemini] ${model} body: ${raw.slice(0, 800)}`);
     }
     return { status: response.status, json };
   } catch (error) {
@@ -284,7 +345,11 @@ function explainGeminiError(httpStatus: number, blob: string, msg: string): Anal
   if (httpStatus === 503 || /high demand|UNAVAILABLE|overloaded|busy right now/i.test(blob)) {
     return new AnalysisError("Gemini is busy right now. Wait a few seconds and try again.", 503);
   }
-  if (httpStatus === 401 || httpStatus === 403 || /API key|PERMISSION_DENIED|invalid/i.test(blob)) {
+  if (
+    httpStatus === 401 ||
+    httpStatus === 403 ||
+    /API_KEY_INVALID|API key not valid|PERMISSION_DENIED/i.test(blob)
+  ) {
     return new AnalysisError(
       "Gemini rejected the API key. Check GEMINI_API_KEY in Vercel / .env.local.",
       502,
@@ -353,12 +418,277 @@ function unwrapGemini(
 function extractJson(text: string): string {
   const trimmed = text.trim();
   const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  return fence ? fence[1].trim() : trimmed;
+  if (fence) return fence[1].trim();
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start >= 0 && end > start) return trimmed.slice(start, end + 1);
+  const arrayStart = trimmed.indexOf("[");
+  const arrayEnd = trimmed.lastIndexOf("]");
+  if (arrayStart >= 0 && arrayEnd > arrayStart) return trimmed.slice(arrayStart, arrayEnd + 1);
+  return trimmed;
+}
+
+function asArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object") return Object.values(value);
+  return [];
+}
+
+function pickObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+/** Pull the analysis object out of the envelopes Gemini actually returns. */
+function unwrapAnalysisShape(raw: unknown): Record<string, unknown> {
+  let current = raw;
+  if (Array.isArray(current)) current = current[0];
+  let obj = pickObject(current);
+  if (!obj) return {};
+
+  for (const key of ["analysis", "data", "result", "output", "callAnalysis", "call_analysis"]) {
+    const nested = pickObject(obj[key]);
+    if (nested && ("overall" in nested || "kpis" in nested || "utterances" in nested || "summary" in nested)) {
+      obj = nested;
+      break;
+    }
+  }
+
+  const snake: Record<string, unknown> = { ...obj };
+  if (snake.key_moments && !snake.keyMoments) snake.keyMoments = snake.key_moments;
+  if (snake.action_items && !snake.actionItems) snake.actionItems = snake.action_items;
+  if (snake.overall_sentiment && !snake.overall) {
+    snake.overall = {
+      sentiment: snake.overall_sentiment,
+      score: snake.overall_score ?? 0,
+      confidence: snake.overall_confidence ?? 0.5,
+      reasoning: snake.reasoning ?? snake.overall_reasoning ?? "",
+      supportingSignals: asArray(snake.supportingSignals ?? snake.supporting_signals),
+      contradictingSignals: asArray(snake.contradictingSignals ?? snake.contradicting_signals),
+      evidence: asArray(snake.evidence),
+    };
+  }
+
+  return snake;
+}
+
+function coerceEvidenceList(value: unknown): unknown[] {
+  if (value == null) return [];
+  const items = Array.isArray(value) ? value : [value];
+  return items.map((item) => {
+    if (typeof item === "string") return { turnIndex: -1, quote: item };
+    const o = pickObject(item);
+    if (!o) return { turnIndex: -1, quote: String(item ?? "") };
+    return {
+      turnIndex: o.turnIndex ?? o.index ?? o.turn ?? o.utteranceIndex ?? -1,
+      quote: o.quote ?? o.text ?? o.span ?? "",
+    };
+  });
+}
+
+function coerceOverall(raw: unknown) {
+  if (typeof raw === "string" || typeof raw === "number") {
+    return {
+      sentiment: raw,
+      score: typeof raw === "number" ? raw : 0,
+      confidence: 0.5,
+      reasoning: "",
+      supportingSignals: [],
+      contradictingSignals: [],
+      evidence: [],
+    };
+  }
+  const o = pickObject(raw) ?? {};
+  return {
+    sentiment: o.sentiment ?? o.label ?? o.overall_sentiment ?? "neutral",
+    score: o.score ?? o.polarity ?? 0,
+    confidence: o.confidence ?? 0.5,
+    reasoning: o.reasoning ?? o.reason ?? o.summary ?? "",
+    supportingSignals: flattenStringList(o.supportingSignals ?? o.supporting_signals),
+    contradictingSignals: flattenStringList(o.contradictingSignals ?? o.contradicting_signals),
+    evidence: coerceEvidenceList(o.evidence),
+  };
+}
+
+function coerceClaim(raw: unknown, fallback: Record<string, unknown>) {
+  if (raw == null) return fallback;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    return {
+      value: raw,
+      status: "ok",
+      confidence: 0.5,
+      reason: "",
+      evidence: [],
+    };
+  }
+  const o = raw as Record<string, unknown>;
+  return {
+    value: "value" in o ? o.value : (o.score ?? o.label ?? o.sentiment ?? null),
+    status: o.status ?? "ok",
+    confidence: o.confidence ?? 0.5,
+    reason: o.reason ?? o.reasoning ?? "",
+    evidence: coerceEvidenceList(o.evidence),
+  };
+}
+
+function coerceKpiGroup(
+  raw: unknown,
+  fallback: Record<string, unknown>,
+): Record<string, unknown> {
+  const o = pickObject(raw);
+  if (!o) return fallback;
+  const out: Record<string, unknown> = { ...fallback };
+  for (const [key, fb] of Object.entries(fallback)) {
+    if (key === "topics" || key === "complianceChecks") {
+      out[key] = o[key] ?? fb;
+      continue;
+    }
+    out[key] = coerceClaim(o[key], fb as Record<string, unknown>);
+  }
+  return out;
+}
+
+function coerceUtterance(item: unknown, index: number) {
+  const o = pickObject(item);
+  if (!o) {
+    return {
+      index,
+      sentiment: "neutral",
+      score: 0,
+      confidence: 0,
+      emotion: "neutral",
+      reasoning: "",
+    };
+  }
+  return {
+    index: o.index ?? o.turnIndex ?? o.turn ?? index,
+    sentiment: o.sentiment ?? o.label ?? "neutral",
+    score: o.score ?? o.polarity ?? 0,
+    confidence: o.confidence ?? 0.5,
+    emotion: o.emotion ?? o.label ?? "neutral",
+    reasoning: o.reasoning ?? o.reason ?? "",
+  };
+}
+
+function coerceEmotion(item: unknown) {
+  const o = pickObject(item);
+  if (!o) return null;
+  return {
+    label: o.label ?? o.emotion ?? o.name ?? "unknown",
+    intensity: o.intensity ?? o.score ?? 0.5,
+    speakerRole: o.speakerRole ?? o.speaker_role ?? o.role ?? "customer",
+    evidence: coerceEvidenceList(o.evidence),
+  };
+}
+
+function flattenStringList(value: unknown): string[] {
+  return asArray(value)
+    .map((item) => {
+      if (item == null) return "";
+      if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+        return String(item).trim();
+      }
+      const o = pickObject(item);
+      if (!o) return "";
+      const picked =
+        o.risk ?? o.label ?? o.text ?? o.detail ?? o.note ?? o.summary ?? o.message ?? o.title ?? o.why;
+      return picked == null || typeof picked === "object" ? "" : String(picked).trim();
+    })
+    .filter(Boolean);
+}
+
+function coerceActionItem(item: unknown) {
+  if (typeof item === "string") {
+    return { owner: "unassigned", task: item, dueHint: "", evidence: [] };
+  }
+  const o = pickObject(item);
+  if (!o) return null;
+  return {
+    owner: o.owner ?? o.who ?? "unassigned",
+    task: o.task ?? o.action ?? o.text ?? o.label ?? "",
+    dueHint: o.dueHint ?? o.due ?? "",
+    evidence: coerceEvidenceList(o.evidence),
+  };
+}
+
+function coerceCoaching(item: unknown) {
+  if (typeof item === "string") {
+    return { area: "general", observation: item, recommendation: "", evidence: [] };
+  }
+  const o = pickObject(item);
+  if (!o) return null;
+  return {
+    area: o.area ?? o.topic ?? "general",
+    observation: o.observation ?? o.text ?? o.note ?? "",
+    recommendation: o.recommendation ?? o.action ?? o.fix ?? "",
+    evidence: coerceEvidenceList(o.evidence),
+  };
+}
+
+function coerceMoment(item: unknown) {
+  const o = pickObject(item);
+  if (!o) return null;
+  return {
+    utteranceIndex: o.utteranceIndex ?? o.turnIndex ?? o.index ?? 0,
+    type: o.type ?? "turning_point",
+    label: o.label ?? o.title ?? "Key moment",
+    quote: o.quote ?? o.text ?? "",
+    why: o.why ?? o.reason ?? o.detail ?? "",
+  };
+}
+
+function normalizeModelPayload(raw: unknown): unknown {
+  const obj = unwrapAnalysisShape(raw);
+  const fallback = emptyKpis();
+  const kpisIn = pickObject(obj.kpis) ?? {};
+
+  const summaryIn = pickObject(obj.summary);
+  return {
+    overall: coerceOverall(
+      obj.overall ?? {
+        sentiment: "neutral",
+        score: 0,
+        confidence: 0,
+        reasoning: "The model did not return an overall verdict.",
+        supportingSignals: [],
+        contradictingSignals: [],
+        evidence: [],
+      },
+    ),
+    summary: {
+      headline: summaryIn?.headline ?? summaryIn?.title ?? "Analysis incomplete",
+      abstract: summaryIn?.abstract ?? summaryIn?.summary ?? "The model did not return a summary.",
+      callReason: summaryIn?.callReason ?? summaryIn?.call_reason ?? "",
+      outcome: summaryIn?.outcome ?? "",
+    },
+    utterances: asArray(obj.utterances).map((item, i) => coerceUtterance(item, i)),
+    emotions: asArray(obj.emotions).map(coerceEmotion).filter(Boolean),
+    kpis: {
+      customer: coerceKpiGroup(kpisIn.customer, fallback.customer as Record<string, unknown>),
+      agent: coerceKpiGroup(kpisIn.agent, fallback.agent as Record<string, unknown>),
+      company: coerceKpiGroup(kpisIn.company, fallback.company as Record<string, unknown>),
+      conversation: coerceKpiGroup(
+        kpisIn.conversation,
+        fallback.conversation as Record<string, unknown>,
+      ),
+    },
+    keyMoments: asArray(obj.keyMoments).map(coerceMoment).filter(Boolean),
+    actionItems: asArray(obj.actionItems).map(coerceActionItem).filter(Boolean),
+    coaching: asArray(obj.coaching).map(coerceCoaching).filter(Boolean),
+    risks: flattenStringList(obj.risks),
+    limitations: flattenStringList(obj.limitations),
+  };
 }
 
 function parseAnalysis(candidate: unknown, source: string): AiAnalysis {
-  const parsed = AiAnalysisSchema.safeParse(candidate);
+  const normalized = normalizeModelPayload(candidate);
+  const parsed = AiAnalysisSchema.safeParse(normalized);
   if (!parsed.success) {
+    const keys =
+      candidate && typeof candidate === "object"
+        ? Object.keys(candidate as Record<string, unknown>).join(", ")
+        : typeof candidate;
+    console.error(`[analyze] contract mismatch from ${source}. keys: ${keys}`);
     throw new AnalysisError(
       `The ${source} returned a payload that does not match the analysis contract.`,
       502,

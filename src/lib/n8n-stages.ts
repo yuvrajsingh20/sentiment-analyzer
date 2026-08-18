@@ -12,7 +12,7 @@ export const N8N_STAGES = [
   { id: "gemini", label: "Gemini — analyse call", short: "Gemini", detail: "Structured JSON from the model" },
   { id: "parse", label: "Parse & schema-validate", short: "Schema", detail: "Contract check" },
   { id: "evidence", label: "Verify evidence", short: "Evidence", detail: "Quotes matched to the transcript" },
-  { id: "kpi", label: "KPI engine", short: "KPIs", detail: "Talk ratio, words, questions" },
+  { id: "kpi", label: "KPI engine", short: "KPIs", detail: "Customer, agent, company, conversation" },
   { id: "gate", label: "Quality gate", short: "Gate", detail: "Coverage and grounding" },
 ] as const;
 

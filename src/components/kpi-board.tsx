@@ -33,9 +33,9 @@ import type {
 /**
  * The KPI board.
  *
- * Four groups, in the order a call reviewer actually reads them: how the
- * customer felt, how the agent performed, what happened to the case, and the
- * hard numbers.
+ * Four inferred groups, in the order a call reviewer actually reads them: how
+ * the customer felt, how the agent performed, how the company showed up, what
+ * happened to the case — then the hard numbers.
  *
  * Two things are load-bearing about the layout:
  *
@@ -61,8 +61,8 @@ export function KpiBoard({
       <header>
         <h2 className="type-card-title">Call KPIs</h2>
         <p className="mt-1 type-body-sm text-[var(--ink-2)]">
-          CSAT, customer effort, NPS, first-contact resolution, escalation and
-          churn — answered only when the transcript supports them.
+          CSAT, customer effort, NPS, company SLA, brand risk, first-contact
+          resolution and churn — answered only when the transcript supports them.
         </p>
       </header>
       <Group
@@ -192,6 +192,47 @@ export function KpiBoard({
             onJump={onJump}
             render={(v: number) => <span className="tabular">{pct(v)}</span>}
             tone={(v: number) => qualityTone(v)}
+            bar={(v: number) => v}
+          />
+        ))}
+      </Group>
+
+      <Group
+        title="Company"
+        note="How the company performed — brand, process, policy, commercial risk."
+        kind="inferred"
+      >
+        <ClaimTile
+          label="Brand sentiment"
+          claim={kpis.company.brandSentiment}
+          onJump={onJump}
+          render={(v: SentimentLabel) => (
+            <span className="flex items-center gap-1.5">
+              <span aria-hidden style={{ color: SENTIMENT_COLOR[v] }}>
+                {SENTIMENT_GLYPH[v]}
+              </span>
+              {SENTIMENT_LABEL[v]}
+            </span>
+          )}
+        />
+        {(
+          [
+            ["SLA adherence", kpis.company.slaAdherence, qualityTone],
+            ["Process effectiveness", kpis.company.processEffectiveness, qualityTone],
+            ["Policy clarity", kpis.company.policyClarity, qualityTone],
+            ["Knowledge accuracy", kpis.company.knowledgeAccuracy, qualityTone],
+            ["Reputational risk", kpis.company.reputationalRisk, riskTone],
+            ["Revenue at risk", kpis.company.revenueAtRisk, riskTone],
+            ["Repeat-contact risk", kpis.company.repeatContactRisk, riskTone],
+          ] as const
+        ).map(([label, claim, tone]) => (
+          <ClaimTile
+            key={label}
+            label={label}
+            claim={claim}
+            onJump={onJump}
+            render={(v: number) => <span className="tabular">{pct(v)}</span>}
+            tone={(v: number) => tone(v)}
             bar={(v: number) => v}
           />
         ))}

@@ -155,7 +155,10 @@ export function DashboardClient({
         };
 
         if (!response.ok || !body.result) {
-          setError(body.error ?? `The server returned ${response.status}.`);
+          setError(
+            [body.error, body.detail].filter(Boolean).join(" — ") ||
+              `The server returned ${response.status}.`,
+          );
           return;
         }
 

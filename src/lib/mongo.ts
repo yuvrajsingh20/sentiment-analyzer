@@ -28,7 +28,10 @@ async function connect(): Promise<MongoClient> {
   }
 
   if (!globalThis.__saMongo) {
-    const client = new MongoClient(uri, { maxPoolSize: 10 });
+    const client = new MongoClient(uri, {
+      maxPoolSize: 10,
+      serverSelectionTimeoutMS: 5_000,
+    });
     globalThis.__saMongo = {
       client,
       connecting: client.connect(),

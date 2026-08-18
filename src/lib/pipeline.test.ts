@@ -99,6 +99,16 @@ function stubAnalysis(turns: ReturnType<typeof parseTranscript>): AiAnalysis {
         ownership: claim(0.6, 2),
         resolutionEffectiveness: claim(0.5, 4),
       },
+      company: {
+        brandSentiment: claim("negative", 1),
+        slaAdherence: claim(0.3, 1),
+        processEffectiveness: claim(0.4, 1),
+        policyClarity: claim(0.5, 2),
+        knowledgeAccuracy: claim(0.6, 0),
+        reputationalRisk: claim(0.5, 3),
+        revenueAtRisk: claim(0.4, 3),
+        repeatContactRisk: claim(0.6, 1),
+      },
       conversation: {
         resolutionStatus: abstain,
         firstContactResolution: abstain,

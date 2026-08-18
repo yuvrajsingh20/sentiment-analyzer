@@ -34,10 +34,24 @@ import { z } from "zod";
 export const SENTIMENT_LABELS = ["positive", "neutral", "negative"] as const;
 export type SentimentLabel = (typeof SENTIMENT_LABELS)[number];
 
-const sentiment = z
-  .string()
-  .transform((v) => v.trim().toLowerCase())
-  .pipe(z.enum(SENTIMENT_LABELS).catch("neutral"));
+function asSentiment(v: unknown): SentimentLabel {
+  if (typeof v === "number" && Number.isFinite(v)) {
+    if (v > 0.15) return "positive";
+    if (v < -0.15) return "negative";
+    return "neutral";
+  }
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    const o = v as Record<string, unknown>;
+    return asSentiment(o.sentiment ?? o.value ?? o.label);
+  }
+  const s = String(v ?? "neutral").trim().toLowerCase();
+  if (s === "positive" || s === "negative" || s === "neutral") return s;
+  if (/(pos|good|happy|promot)/.test(s)) return "positive";
+  if (/(neg|bad|angry|detract)/.test(s)) return "negative";
+  return "neutral";
+}
+
+const sentiment = z.any().optional().transform(asSentiment);
 
 const clamped = (min: number, max: number, fallback: number) =>
   z
@@ -56,11 +70,25 @@ const text = (fallback = "") =>
     .union([z.string(), z.null(), z.undefined()])
     .transform((v) => (typeof v === "string" ? v.trim() : fallback));
 
-const stringList = z
-  .union([z.array(z.union([z.string(), z.number()])), z.null(), z.undefined()])
-  .transform((v) =>
-    Array.isArray(v) ? v.map((s) => String(s).trim()).filter(Boolean) : [],
-  );
+function stringifyListItem(item: unknown): string {
+  if (item == null) return "";
+  if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+    return String(item).trim();
+  }
+  if (typeof item === "object") {
+    const o = item as Record<string, unknown>;
+    const picked =
+      o.risk ?? o.label ?? o.text ?? o.detail ?? o.note ?? o.summary ?? o.message ?? o.title ?? o.why;
+    if (picked != null && typeof picked !== "object") return String(picked).trim();
+  }
+  return "";
+}
+
+const stringList = z.any().optional().transform((v) => {
+  if (v == null) return [] as string[];
+  const arr = Array.isArray(v) ? v : [v];
+  return arr.map(stringifyListItem).filter(Boolean);
+});
 
 const bool = z
   .union([z.boolean(), z.string(), z.null(), z.undefined()])
@@ -72,17 +100,34 @@ const enumish = <T extends readonly [string, ...string[]]>(
   values: T,
   fallback: T[number],
 ) =>
-  z
-    .string()
-    .transform((v) => v.trim().toLowerCase().replace(/[\s-]+/g, "_"))
-    .pipe(z.enum(values).catch(fallback as never));
+  z.any().optional().transform((v) => {
+    const s = String(v ?? fallback)
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, "_");
+    return ((values as readonly string[]).includes(s) ? s : fallback) as T[number];
+  });
 
 /* ── evidence & claims ───────────────────────────────────────────────────── */
 
 export const CLAIM_STATUSES = ["ok", "insufficient_evidence"] as const;
 export type ClaimStatus = (typeof CLAIM_STATUSES)[number];
 
-export const EvidenceSchema = z.object({
+export const EvidenceSchema = z.preprocess((v) => {
+  if (v == null || v === "") return { turnIndex: -1, quote: "" };
+  if (typeof v === "string") return { turnIndex: -1, quote: v };
+  if (typeof v === "number") return { turnIndex: v, quote: "" };
+  if (typeof v === "object" && !Array.isArray(v)) {
+    const o = v as Record<string, unknown>;
+    return {
+      turnIndex: o.turnIndex ?? o.index ?? o.turn ?? o.utteranceIndex ?? -1,
+      quote: o.quote ?? o.text ?? o.span ?? "",
+      verified: o.verified,
+      matchedTurnIndex: o.matchedTurnIndex,
+    };
+  }
+  return { turnIndex: -1, quote: String(v) };
+}, z.object({
   /** Index of the turn the quote came from. -1 when the model didn't say. */
   turnIndex: clamped(-1, 100_000, -1).transform((n) => Math.round(n)),
   /** Verbatim span from that turn. Verified by src/lib/verify.ts. */
@@ -94,16 +139,23 @@ export const EvidenceSchema = z.object({
   verified: z.boolean().optional(),
   /** Turn the verifier actually found the quote in, when it differs. */
   matchedTurnIndex: z.number().optional(),
-});
+}));
 export type Evidence = z.infer<typeof EvidenceSchema>;
 
-const evidenceList = z
-  .union([z.array(EvidenceSchema), z.null(), z.undefined()])
-  .transform((v) => v ?? []);
+const evidenceList = z.preprocess((v) => {
+  if (v == null) return [];
+  return Array.isArray(v) ? v : [v];
+}, z.array(EvidenceSchema));
 
 const claimStatus = z
-  .string()
-  .transform((v) => v.trim().toLowerCase().replace(/[\s-]+/g, "_"))
+  .any()
+  .optional()
+  .transform((v) =>
+    String(v ?? "ok")
+      .trim()
+      .toLowerCase()
+      .replace(/[\s-]+/g, "_"),
+  )
   .pipe(z.enum(CLAIM_STATUSES).catch("ok"));
 
 /**
@@ -115,15 +167,34 @@ const claimStatus = z
  * than a dashboard full of confident numbers would suggest.
  */
 function claim<T extends z.ZodTypeAny>(valueSchema: T) {
-  return z.object({
+  return z.preprocess((raw) => {
+    if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
+      return {
+        value: raw ?? null,
+        status: raw == null ? "insufficient_evidence" : "ok",
+        confidence: raw == null ? 0 : 0.5,
+        reason: "",
+        evidence: [],
+      };
+    }
+    const o = raw as Record<string, unknown>;
+    const value = "value" in o ? o.value : (o.score ?? o.label ?? o.sentiment ?? null);
+    return {
+      value,
+      status: o.status ?? "ok",
+      confidence: o.confidence ?? 0.5,
+      reason: o.reason ?? o.reasoning ?? "",
+      evidence: o.evidence ?? [],
+    };
+  }, z.object({
     value: z
-      .union([valueSchema, z.null(), z.undefined()])
+      .union([z.null(), z.undefined(), valueSchema])
       .transform((v) => (v === undefined ? null : v)),
     status: claimStatus,
     confidence: unit,
     reason: text(),
     evidence: evidenceList,
-  });
+  }));
 }
 
 export type Claim<T> = {
@@ -208,11 +279,83 @@ export const AgentKpisSchema = z.object({
 });
 export type AgentKpis = z.infer<typeof AgentKpisSchema>;
 
+export const CompanyKpisSchema = z.object({
+  brandSentiment: claim(sentiment),
+  slaAdherence: claim(unit),
+  processEffectiveness: claim(unit),
+  policyClarity: claim(unit),
+  knowledgeAccuracy: claim(unit),
+  reputationalRisk: claim(unit),
+  revenueAtRisk: claim(unit),
+  repeatContactRisk: claim(unit),
+});
+export type CompanyKpis = z.infer<typeof CompanyKpisSchema>;
+
+function emptyClaim(reason: string) {
+  return {
+    value: null,
+    status: "insufficient_evidence" as const,
+    confidence: 0,
+    reason,
+    evidence: [] as [],
+  };
+}
+
+export function emptyKpis() {
+  const miss = (label: string) => emptyClaim(`${label} was not present in this analysis.`);
+  return {
+    customer: {
+      sentiment: miss("Customer sentiment"),
+      frustration: miss("Frustration"),
+      effort: miss("Customer effort"),
+      satisfaction: miss("Satisfaction"),
+      csatPredicted: miss("Predicted CSAT"),
+      npsCategory: miss("NPS category"),
+      escalationIntent: miss("Escalation intent"),
+      churnRisk: miss("Churn risk"),
+    },
+    agent: {
+      sentiment: miss("Agent sentiment"),
+      empathy: miss("Empathy"),
+      professionalism: miss("Professionalism"),
+      responsiveness: miss("Responsiveness"),
+      activeListening: miss("Active listening"),
+      ownership: miss("Ownership"),
+      resolutionEffectiveness: miss("Resolution effectiveness"),
+    },
+    company: {
+      brandSentiment: miss("Brand sentiment"),
+      slaAdherence: miss("SLA adherence"),
+      processEffectiveness: miss("Process effectiveness"),
+      policyClarity: miss("Policy clarity"),
+      knowledgeAccuracy: miss("Knowledge accuracy"),
+      reputationalRisk: miss("Reputational risk"),
+      revenueAtRisk: miss("Revenue at risk"),
+      repeatContactRisk: miss("Repeat-contact risk"),
+    },
+    conversation: {
+      resolutionStatus: miss("Resolution"),
+      firstContactResolution: miss("First-contact resolution"),
+      escalationRisk: miss("Escalation risk"),
+      urgency: miss("Urgency"),
+      issueCategory: miss("Issue category"),
+      topics: [],
+      complianceChecks: [],
+    },
+  };
+}
+
 export const ComplianceCheckSchema = z.object({
   label: text("check"),
   status: z
-    .string()
-    .transform((v) => v.trim().toLowerCase().replace(/[\s-]+/g, "_"))
+    .any()
+    .optional()
+    .transform((v) =>
+      String(v ?? "not_applicable")
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, "_"),
+    )
     .pipe(z.enum(["passed", "failed", "not_applicable"]).catch("not_applicable")),
   evidence: evidenceList,
   note: text(),
@@ -224,7 +367,7 @@ export const ConversationKpisSchema = z.object({
   firstContactResolution: claim(bool),
   escalationRisk: claim(unit),
   urgency: claim(enumish(URGENCY_LEVELS, "medium")),
-  issueCategory: claim(z.string()),
+  issueCategory: claim(z.any().optional().transform((v) => (v == null ? "" : String(v)))),
   topics: stringList,
   complianceChecks: z
     .union([z.array(ComplianceCheckSchema), z.null(), z.undefined()])
@@ -233,9 +376,10 @@ export const ConversationKpisSchema = z.object({
 export type ConversationKpis = z.infer<typeof ConversationKpisSchema>;
 
 export const KpisSchema = z.object({
-  customer: CustomerKpisSchema,
-  agent: AgentKpisSchema,
-  conversation: ConversationKpisSchema,
+  customer: CustomerKpisSchema.catch(() => emptyKpis().customer),
+  agent: AgentKpisSchema.catch(() => emptyKpis().agent),
+  company: CompanyKpisSchema.catch(() => emptyKpis().company),
+  conversation: ConversationKpisSchema.catch(() => emptyKpis().conversation),
 });
 export type Kpis = z.infer<typeof KpisSchema>;
 
@@ -260,26 +404,38 @@ export const KeyMomentSchema = z.object({
 });
 export type KeyMoment = z.infer<typeof KeyMomentSchema>;
 
-export const ActionItemSchema = z.object({
+export const ActionItemSchema = z.preprocess((v) => {
+  if (typeof v === "string") return { owner: "unassigned", task: v, dueHint: "", evidence: [] };
+  return v;
+}, z.object({
   owner: text("unassigned"),
   task: text(),
   dueHint: text(),
   evidence: evidenceList,
-});
+}));
 export type ActionItem = z.infer<typeof ActionItemSchema>;
 
-export const CoachingNoteSchema = z.object({
+export const CoachingNoteSchema = z.preprocess((v) => {
+  if (typeof v === "string") {
+    return { area: "general", observation: v, recommendation: "", evidence: [] };
+  }
+  return v;
+}, z.object({
   area: text("general"),
   observation: text(),
   recommendation: text(),
   evidence: evidenceList,
-});
+}));
 export type CoachingNote = z.infer<typeof CoachingNoteSchema>;
 
 /* ── the full model output ───────────────────────────────────────────────── */
 
 export const AiAnalysisSchema = z.object({
-  overall: z.object({
+  overall: z.preprocess((v) => {
+    if (v == null) return {};
+    if (typeof v !== "object" || Array.isArray(v)) return { sentiment: v };
+    return v;
+  }, z.object({
     sentiment,
     score: polarity,
     confidence: unit,
@@ -288,29 +444,49 @@ export const AiAnalysisSchema = z.object({
     supportingSignals: stringList,
     contradictingSignals: stringList,
     evidence: evidenceList,
-  }),
+  })),
   summary: z.object({
     headline: text(),
     abstract: text(),
     callReason: text(),
     outcome: text(),
   }),
-  utterances: z
-    .union([z.array(UtteranceAnalysisSchema), z.null(), z.undefined()])
-    .transform((v) => v ?? []),
-  emotions: z
-    .union([z.array(EmotionSchema), z.null(), z.undefined()])
-    .transform((v) => v ?? []),
+  utterances: z.any().optional().transform((v) => {
+    const arr = Array.isArray(v) ? v : [];
+    return arr
+      .map((item) => UtteranceAnalysisSchema.safeParse(item))
+      .filter((r) => r.success)
+      .map((r) => r.data);
+  }),
+  emotions: z.any().optional().transform((v) => {
+    const arr = Array.isArray(v) ? v : [];
+    return arr
+      .map((item) => EmotionSchema.safeParse(item))
+      .filter((r) => r.success)
+      .map((r) => r.data);
+  }),
   kpis: KpisSchema,
-  keyMoments: z
-    .union([z.array(KeyMomentSchema), z.null(), z.undefined()])
-    .transform((v) => v ?? []),
-  actionItems: z
-    .union([z.array(ActionItemSchema), z.null(), z.undefined()])
-    .transform((v) => v ?? []),
-  coaching: z
-    .union([z.array(CoachingNoteSchema), z.null(), z.undefined()])
-    .transform((v) => v ?? []),
+  keyMoments: z.any().optional().transform((v) => {
+    const arr = Array.isArray(v) ? v : [];
+    return arr
+      .map((item) => KeyMomentSchema.safeParse(item))
+      .filter((r) => r.success)
+      .map((r) => r.data);
+  }),
+  actionItems: z.any().optional().transform((v) => {
+    const arr = Array.isArray(v) ? v : [];
+    return arr
+      .map((item) => ActionItemSchema.safeParse(item))
+      .filter((r) => r.success)
+      .map((r) => r.data);
+  }),
+  coaching: z.any().optional().transform((v) => {
+    const arr = Array.isArray(v) ? v : [];
+    return arr
+      .map((item) => CoachingNoteSchema.safeParse(item))
+      .filter((r) => r.success)
+      .map((r) => r.data);
+  }),
   risks: stringList,
   /** What this transcript could not tell the model. */
   limitations: stringList,
@@ -463,6 +639,9 @@ export function collectClaims(
   }
   for (const [k, v] of Object.entries(analysis.kpis.agent)) {
     push("agent", k, v);
+  }
+  for (const [k, v] of Object.entries(analysis.kpis.company)) {
+    push("company", k, v);
   }
   for (const [k, v] of Object.entries(analysis.kpis.conversation)) {
     if (k === "topics" || k === "complianceChecks") continue;

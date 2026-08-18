@@ -145,6 +145,16 @@ function baseAnalysis(turns: TranscriptTurn[]): AiAnalysis {
         ownership: unit(0.6, "I'm sorry about that", 2),
         resolutionEffectiveness: unit(0.4, "Let me look at the transaction history", 2),
       },
+      company: {
+        brandSentiment: claim("negative", "third time I've called", 1),
+        slaAdherence: unit(0.2, "third time I've called", 1),
+        processEffectiveness: unit(0.3, "third time I've called", 1),
+        policyClarity: unit(0.5, "I'm sorry about that", 2),
+        knowledgeAccuracy: unit(0.6, "Let me look at the transaction history", 2),
+        reputationalRisk: unit(0.8, "going to the ombudsman", 3),
+        revenueAtRisk: unit(0.6, "third time I've called", 1),
+        repeatContactRisk: unit(0.9, "third time I've called", 1),
+      },
       conversation: {
         resolutionStatus: claim("unresolved", "going to the ombudsman", 3),
         firstContactResolution: claim(false, "third time I've called", 1),
@@ -226,6 +236,13 @@ describe("quality gate", () => {
     >) {
       input.kpis.agent[key].evidence = [
         { turnIndex: 0, quote: "another sentence that was never spoken here" },
+      ];
+    }
+    for (const key of Object.keys(input.kpis.company) as Array<
+      keyof typeof input.kpis.company
+    >) {
+      input.kpis.company[key].evidence = [
+        { turnIndex: 0, quote: "a company claim that was never spoken here" },
       ];
     }
 

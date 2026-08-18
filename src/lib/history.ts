@@ -219,12 +219,24 @@ export async function saveAnalysis(
   username: string,
   result: AnalysisResult,
 ): Promise<HistorySummary> {
-  if (mongoEnabled()) return saveMongo(username, result);
+  if (mongoEnabled()) {
+    try {
+      return await saveMongo(username, result);
+    } catch (error) {
+      console.error("[history] mongo save failed, using files", error);
+    }
+  }
   return saveFile(username, result);
 }
 
 export async function listHistory(username: string): Promise<HistorySummary[]> {
-  if (mongoEnabled()) return listMongo(username);
+  if (mongoEnabled()) {
+    try {
+      return await listMongo(username);
+    } catch (error) {
+      console.error("[history] mongo list failed, using files", error);
+    }
+  }
   return listFile(username);
 }
 
@@ -232,7 +244,13 @@ export async function getHistory(
   username: string,
   id: string,
 ): Promise<HistoryRecord | null> {
-  if (mongoEnabled()) return getMongo(username, id);
+  if (mongoEnabled()) {
+    try {
+      return await getMongo(username, id);
+    } catch (error) {
+      console.error("[history] mongo get failed, using files", error);
+    }
+  }
   return getFile(username, id);
 }
 
@@ -240,6 +258,12 @@ export async function deleteHistory(
   username: string,
   id: string,
 ): Promise<boolean> {
-  if (mongoEnabled()) return deleteMongo(username, id);
+  if (mongoEnabled()) {
+    try {
+      return await deleteMongo(username, id);
+    } catch (error) {
+      console.error("[history] mongo delete failed, using files", error);
+    }
+  }
   return deleteFile(username, id);
 }

@@ -330,7 +330,7 @@ See `.env.example`. The essentials:
 | `GOOGLE_CLIENT_ID` | enables Continue with Google |
 | `AUTH_SECRET` | HMAC key for the session cookie — **required in production** |
 | `GEMINI_API_KEY` | **required** — Gemini `generateContent` |
-| `GEMINI_MODEL` | optional, default `gemini-2.5-flash` |
+| `GEMINI_MODEL` | optional, default `gemini-3.5-flash-lite` |
 | `MONGODB_URI` | Atlas, if you want saved history |
 
 ### Deployment (Vercel)

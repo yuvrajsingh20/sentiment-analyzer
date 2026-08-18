@@ -93,6 +93,7 @@ export function verifyAnalysis(
     kpis: {
       customer: mapClaims(input.kpis.customer, check),
       agent: mapClaims(input.kpis.agent, check),
+      company: mapClaims(input.kpis.company, check),
       conversation: {
         ...input.kpis.conversation,
         resolutionStatus: withEvidence(input.kpis.conversation.resolutionStatus, check),
