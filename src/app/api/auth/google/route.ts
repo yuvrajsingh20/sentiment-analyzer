@@ -51,17 +51,30 @@ export async function POST(request: Request) {
     );
   }
 
-  const profile = await fetchGoogleUser(accessToken);
-  if (!profile?.email || !isVerifiedEmail(profile)) {
+  try {
+    const profile = await fetchGoogleUser(accessToken);
+    if (!profile?.email || !isVerifiedEmail(profile)) {
+      return NextResponse.json(
+        { error: "Your Google account email must be verified before sign-in." },
+        { status: 401 },
+      );
+    }
+
+    const user = await upsertGoogleUser(profile.email);
+    const token = await createSession(user.username);
+    const response = NextResponse.json({ ok: true, username: user.username });
+    response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
+    return response;
+  } catch (error) {
+    console.error("[auth/google]", error);
     return NextResponse.json(
-      { error: "Your Google account email must be verified before sign-in." },
-      { status: 401 },
+      {
+        error:
+          error instanceof Error && error.message
+            ? error.message
+            : "Google sign-in failed.",
+      },
+      { status: 502 },
     );
   }
-
-  const user = await upsertGoogleUser(profile.email);
-  const token = await createSession(user.username);
-  const response = NextResponse.json({ ok: true, username: user.username });
-  response.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
-  return response;
 }

@@ -23,7 +23,10 @@ type UserStore = { users: UserRecord[] };
 const emptyStore = (): UserStore => ({ users: [] });
 
 export function usersFilePath(): string {
-  return process.env.USERS_FILE ?? join(process.cwd(), "data", "users.json");
+  if (process.env.USERS_FILE?.trim()) return process.env.USERS_FILE.trim();
+  // Vercel's app filesystem is read-only; /tmp is writable for this instance.
+  if (process.env.VERCEL) return join("/tmp", "sentiment-analyzer-users.json");
+  return join(process.cwd(), "data", "users.json");
 }
 
 export function normalizeUsername(raw: string): string {
@@ -146,27 +149,32 @@ export async function createPasswordUser(args: {
 /** First Google sign-in creates the account; later visits reuse it. */
 export async function upsertGoogleUser(email: string): Promise<UserRecord> {
   const username = normalizeUsername(email);
-  return withLock(async () => {
-    const store = await readStore();
-    const existing = store.users.find(
-      (user) => user.username === username || user.email === username,
-    );
-    if (existing) {
-      existing.email = username;
-      if (existing.provider !== "google" && !existing.passwordHash) {
-        existing.provider = "google";
+  const fresh: UserRecord = {
+    username,
+    email: username,
+    provider: "google",
+    createdAt: new Date().toISOString(),
+  };
+  try {
+    return await withLock(async () => {
+      const store = await readStore();
+      const existing = store.users.find(
+        (user) => user.username === username || user.email === username,
+      );
+      if (existing) {
+        existing.email = username;
+        if (existing.provider !== "google" && !existing.passwordHash) {
+          existing.provider = "google";
+        }
+        await writeStore(store);
+        return existing;
       }
+      store.users.push(fresh);
       await writeStore(store);
-      return existing;
-    }
-    const user: UserRecord = {
-      username,
-      email: username,
-      provider: "google",
-      createdAt: new Date().toISOString(),
-    };
-    store.users.push(user);
-    await writeStore(store);
-    return user;
-  });
+      return fresh;
+    });
+  } catch (error) {
+    console.warn("[users] could not persist Google account; signing in anyway", error);
+    return fresh;
+  }
 }

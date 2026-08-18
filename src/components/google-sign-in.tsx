@@ -121,7 +121,7 @@ export function GoogleSignIn({
         const timer = setTimeout(() => {
           reject(
             new Error(
-              "Google sign-in timed out. In Google Cloud Console, add http://localhost:3000 as an Authorized JavaScript origin.",
+              `Google sign-in timed out. In Google Cloud Console → OAuth client, add ${window.location.origin} as an Authorized JavaScript origin.`,
             ),
           );
         }, 60_000);
@@ -131,9 +131,13 @@ export function GoogleSignIn({
           callback: (resp) => {
             clearTimeout(timer);
             if (resp.error || !resp.access_token) {
+              const origin = window.location.origin;
+              const code = resp.error ?? "no_token";
               reject(
                 new Error(
-                  "Google sign-in was cancelled or blocked. In Google Cloud Console, add http://localhost:3000 as an Authorized JavaScript origin.",
+                  code === "popup_closed_by_user"
+                    ? "Google sign-in was cancelled."
+                    : `Google blocked this origin (${code}). In Google Cloud Console → OAuth client, add ${origin} as an Authorized JavaScript origin, then wait a minute and retry.`,
                 ),
               );
               return;

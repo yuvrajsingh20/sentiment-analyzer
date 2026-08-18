@@ -38,9 +38,9 @@ export const GOOGLE_OAUTH_ERRORS: Record<string, string> = {
   google_invalid_client:
     "Google rejected the client secret. Paste GOOGLE_CLIENT_SECRET from Cloud Console, or use Continue with Google on this page.",
   google_redirect_mismatch:
-    "The redirect URI does not match Google Cloud Console. Add http://localhost:3000 as an Authorized JavaScript origin.",
+    "The redirect URI does not match Google Cloud Console. Add https://sentiment-analyzer-neon.vercel.app (and http://localhost:3000 for local) as Authorized JavaScript origins.",
   google_exchange_failed:
-    "Google sign-in failed. Add http://localhost:3000 as an Authorized JavaScript origin in Google Cloud Console.",
+    "Google sign-in failed. Add this site's URL as an Authorized JavaScript origin in Google Cloud Console.",
   google_email_unverified:
     "Your Google account email must be verified before sign-in.",
 };
