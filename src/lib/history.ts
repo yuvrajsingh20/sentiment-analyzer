@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { AnalysisResult } from "./schema";
 import type { HistorySummary } from "./history-types";
-import { getDb, mongoEnabled } from "./mongo";
+import { getDb, mongoUsable } from "./mongo";
 
 export type { HistorySummary };
 
@@ -219,22 +219,24 @@ export async function saveAnalysis(
   username: string,
   result: AnalysisResult,
 ): Promise<HistorySummary> {
-  if (mongoEnabled()) {
+  if (mongoUsable()) {
     try {
       return await saveMongo(username, result);
     } catch (error) {
-      console.error("[history] mongo save failed, using files", error);
+      console.warn("[history] mongo save skipped, using files");
+      console.debug(error);
     }
   }
   return saveFile(username, result);
 }
 
 export async function listHistory(username: string): Promise<HistorySummary[]> {
-  if (mongoEnabled()) {
+  if (mongoUsable()) {
     try {
       return await listMongo(username);
     } catch (error) {
-      console.error("[history] mongo list failed, using files", error);
+      console.warn("[history] mongo list skipped, using files");
+      console.debug(error);
     }
   }
   return listFile(username);
@@ -244,11 +246,12 @@ export async function getHistory(
   username: string,
   id: string,
 ): Promise<HistoryRecord | null> {
-  if (mongoEnabled()) {
+  if (mongoUsable()) {
     try {
       return await getMongo(username, id);
     } catch (error) {
-      console.error("[history] mongo get failed, using files", error);
+      console.warn("[history] mongo get skipped, using files");
+      console.debug(error);
     }
   }
   return getFile(username, id);
@@ -258,11 +261,12 @@ export async function deleteHistory(
   username: string,
   id: string,
 ): Promise<boolean> {
-  if (mongoEnabled()) {
+  if (mongoUsable()) {
     try {
       return await deleteMongo(username, id);
     } catch (error) {
-      console.error("[history] mongo delete failed, using files", error);
+      console.warn("[history] mongo delete skipped, using files");
+      console.debug(error);
     }
   }
   return deleteFile(username, id);

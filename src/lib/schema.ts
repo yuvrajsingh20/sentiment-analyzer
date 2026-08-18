@@ -428,6 +428,39 @@ export const CoachingNoteSchema = z.preprocess((v) => {
 }));
 export type CoachingNote = z.infer<typeof CoachingNoteSchema>;
 
+export const CustomKpiSchema = z.preprocess((v) => {
+  if (typeof v === "string") {
+    return {
+      label: v,
+      value: null,
+      status: "insufficient_evidence",
+      confidence: 0,
+      reason: "",
+      evidence: [],
+    };
+  }
+  if (!v || typeof v !== "object" || Array.isArray(v)) return v;
+  const o = v as Record<string, unknown>;
+  return {
+    label: o.label ?? o.name ?? o.kpi ?? "Custom KPI",
+    value: "value" in o ? o.value : (o.score ?? null),
+    status: o.status ?? "ok",
+    confidence: o.confidence ?? 0.5,
+    reason: o.reason ?? o.reasoning ?? "",
+    evidence: o.evidence ?? [],
+  };
+}, z.object({
+  label: text("Custom KPI"),
+  value: z
+    .union([z.number(), z.string(), z.boolean(), z.null(), z.undefined()])
+    .transform((v) => (v === undefined ? null : v)),
+  status: claimStatus,
+  confidence: unit,
+  reason: text(),
+  evidence: evidenceList,
+}));
+export type CustomKpi = z.infer<typeof CustomKpiSchema>;
+
 /* ── the full model output ───────────────────────────────────────────────── */
 
 export const AiAnalysisSchema = z.object({
@@ -490,6 +523,13 @@ export const AiAnalysisSchema = z.object({
   risks: stringList,
   /** What this transcript could not tell the model. */
   limitations: stringList,
+  customKpis: z.any().optional().transform((v) => {
+    const arr = Array.isArray(v) ? v : [];
+    return arr
+      .map((item) => CustomKpiSchema.safeParse(item))
+      .filter((r) => r.success)
+      .map((r) => r.data);
+  }),
 });
 export type AiAnalysis = z.infer<typeof AiAnalysisSchema>;
 
@@ -606,6 +646,8 @@ export const AnalysisResultSchema = z.object({
     pipeline: z.enum(ANALYSIS_PIPELINES),
     latencyMs: z.number(),
     characters: z.number(),
+    kpiFocus: z.array(z.string()).optional(),
+    customKpiLabels: z.array(z.string()).optional(),
   }),
   transcript: z.array(TranscriptTurnSchema),
   analysis: AiAnalysisSchema,
@@ -646,6 +688,19 @@ export function collectClaims(
   for (const [k, v] of Object.entries(analysis.kpis.conversation)) {
     if (k === "topics" || k === "complianceChecks") continue;
     push("conversation", k, v);
+  }
+  for (const [i, c] of (analysis.customKpis ?? []).entries()) {
+    out.push({
+      path: `custom.${i}`,
+      group: "custom",
+      claim: {
+        value: c.value,
+        status: c.status,
+        confidence: c.confidence,
+        reason: c.reason,
+        evidence: c.evidence,
+      },
+    });
   }
   return out;
 }

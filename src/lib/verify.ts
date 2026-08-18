@@ -90,6 +90,10 @@ export function verifyAnalysis(
     emotions: input.emotions.map((e) => ({ ...e, evidence: check(e.evidence) })),
     actionItems: input.actionItems.map((a) => ({ ...a, evidence: check(a.evidence) })),
     coaching: input.coaching.map((c) => ({ ...c, evidence: check(c.evidence) })),
+    customKpis: (input.customKpis ?? []).map((c) => ({
+      ...c,
+      evidence: check(c.evidence),
+    })),
     kpis: {
       customer: mapClaims(input.kpis.customer, check),
       agent: mapClaims(input.kpis.agent, check),

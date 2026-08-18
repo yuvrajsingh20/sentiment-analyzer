@@ -393,6 +393,8 @@ export function buildUserPrompt(input) {
     ? `\n\nThe previous attempt at this analysis failed automated verification:\n${input.retryFeedback}\nFix those specific problems. Quotes must be exact substrings of the turn they cite.\n`
     : "";
 
+  const brief = typeof input.kpiBrief === "string" ? input.kpiBrief : "";
+
   return `Analyse the following call transcript.
 
 File: ${input.fileName}
@@ -403,7 +405,7 @@ ${roster}
 
 Each turn is prefixed with its index in square brackets. Return exactly ${input.turnCount} entries in \`utterances\`, with indices 0 through ${input.turnCount - 1}.
 
-Evidence quotes must be exact substrings of the turn they cite, excluding the \`[n] Speaker:\` prefix.${retry}
+Evidence quotes must be exact substrings of the turn they cite, excluding the \`[n] Speaker:\` prefix.${retry}${brief}
 
 --- TRANSCRIPT START ---
 ${input.transcript}

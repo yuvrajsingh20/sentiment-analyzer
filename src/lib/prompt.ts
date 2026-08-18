@@ -28,6 +28,7 @@ export type UserPromptInput = {
   transcript: string;
   /** Verification feedback from a failed first attempt, for the corrective retry. */
   retryFeedback?: string;
+  kpiBrief?: string;
 };
 
 export function buildUserPrompt(input: UserPromptInput): string {

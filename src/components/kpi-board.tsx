@@ -23,6 +23,7 @@ import {
 } from "@/lib/display";
 import type {
   ConversationMetrics,
+  CustomKpi,
   Kpis,
   NpsCategory,
   ResolutionStatus,
@@ -49,27 +50,41 @@ import type {
 
 export function KpiBoard({
   kpis,
+  customKpis = [],
+  focusIds,
   metrics,
   onJump,
 }: {
   kpis: Kpis;
+  customKpis?: CustomKpi[];
+  focusIds?: string[];
   metrics: ConversationMetrics;
   onJump?: (turnIndex: number) => void;
 }) {
+  const focus = focusIds?.length ? new Set(focusIds) : null;
+  const show = (id: string) => !focus || focus.has(id);
+
+  const customerTiles = show("customer.sentiment") || show("customer.frustration") || show("customer.effort") || show("customer.satisfaction") || show("customer.csatPredicted") || show("customer.npsCategory") || show("customer.escalationIntent") || show("customer.churnRisk");
+  const agentTiles = show("agent.sentiment") || show("agent.empathy") || show("agent.professionalism") || show("agent.responsiveness") || show("agent.activeListening") || show("agent.ownership") || show("agent.resolutionEffectiveness");
+  const companyTiles = show("company.brandSentiment") || show("company.slaAdherence") || show("company.processEffectiveness") || show("company.policyClarity") || show("company.knowledgeAccuracy") || show("company.reputationalRisk") || show("company.revenueAtRisk") || show("company.repeatContactRisk");
+  const conversationTiles = show("conversation.resolutionStatus") || show("conversation.firstContactResolution") || show("conversation.escalationRisk") || show("conversation.urgency") || show("conversation.issueCategory");
   return (
     <div className="space-y-8">
       <header>
         <h2 className="type-card-title">Call KPIs</h2>
         <p className="mt-1 type-body-sm text-[var(--ink-2)]">
-          CSAT, customer effort, NPS, company SLA, brand risk, first-contact
-          resolution and churn — answered only when the transcript supports them.
+          {focus
+            ? `Scoring the ${focus.size} KPI${focus.size === 1 ? "" : "s"} you selected${customKpis.length ? `, plus ${customKpis.length} custom` : ""}.`
+            : "CSAT, customer effort, NPS, company SLA, brand risk, first-contact resolution and churn — answered only when the transcript supports them."}
         </p>
       </header>
+      {customerTiles && (
       <Group
         title="Customer"
         note="How the customer experienced the call."
         kind="inferred"
       >
+        {show("customer.sentiment") && (
         <ClaimTile
           label="Customer sentiment"
           claim={kpis.customer.sentiment}
@@ -88,6 +103,8 @@ export function KpiBoard({
             )
           }
         />
+        )}
+        {show("customer.frustration") && (
         <ClaimTile
           label="Frustration"
           claim={kpis.customer.frustration}
@@ -96,6 +113,8 @@ export function KpiBoard({
           tone={(v: number) => riskTone(v)}
           bar={(v: number) => v}
         />
+        )}
+        {show("customer.effort") && (
         <ClaimTile
           label="Customer effort"
           claim={kpis.customer.effort}
@@ -105,6 +124,8 @@ export function KpiBoard({
           bar={(v: number) => v}
           caption={<Hint>how much work they had to do</Hint>}
         />
+        )}
+        {show("customer.satisfaction") && (
         <ClaimTile
           label="Satisfaction"
           claim={kpis.customer.satisfaction}
@@ -113,6 +134,8 @@ export function KpiBoard({
           tone={(v: number) => qualityTone(v)}
           bar={(v: number) => v}
         />
+        )}
+        {show("customer.csatPredicted") && (
         <ClaimTile
           label="Predicted CSAT"
           claim={kpis.customer.csatPredicted}
@@ -126,6 +149,8 @@ export function KpiBoard({
           tone={(v: number) => qualityTone((v - 1) / 4)}
           caption={<Dots value={kpis.customer.csatPredicted.value as number | null} />}
         />
+        )}
+        {show("customer.npsCategory") && (
         <ClaimTile
           label="Likely NPS"
           claim={kpis.customer.npsCategory}
@@ -133,6 +158,8 @@ export function KpiBoard({
           render={(v: NpsCategory) => NPS_LABEL[v]}
           tone={(v: NpsCategory) => NPS_TONE[v]}
         />
+        )}
+        {show("customer.escalationIntent") && (
         <ClaimTile
           label="Escalation intent"
           claim={kpis.customer.escalationIntent}
@@ -142,6 +169,8 @@ export function KpiBoard({
           bar={(v: number) => v}
           caption={<Hint>what they asked for</Hint>}
         />
+        )}
+        {show("customer.churnRisk") && (
         <ClaimTile
           label="Churn risk"
           claim={kpis.customer.churnRisk}
@@ -150,13 +179,17 @@ export function KpiBoard({
           tone={(v: number) => riskTone(v)}
           bar={(v: number) => v}
         />
+        )}
       </Group>
+      )}
 
+      {agentTiles && (
       <Group
         title="Agent"
         note="Behavioural scoring of the representative."
         kind="inferred"
       >
+        {show("agent.sentiment") && (
         <ClaimTile
           label="Agent sentiment"
           claim={kpis.agent.sentiment}
@@ -175,18 +208,21 @@ export function KpiBoard({
             )
           }
         />
+        )}
         {(
           [
-            ["Empathy", kpis.agent.empathy],
-            ["Professionalism", kpis.agent.professionalism],
-            ["Responsiveness", kpis.agent.responsiveness],
-            ["Active listening", kpis.agent.activeListening],
-            ["Ownership", kpis.agent.ownership],
-            ["Resolution effectiveness", kpis.agent.resolutionEffectiveness],
+            ["agent.empathy", "Empathy", kpis.agent.empathy],
+            ["agent.professionalism", "Professionalism", kpis.agent.professionalism],
+            ["agent.responsiveness", "Responsiveness", kpis.agent.responsiveness],
+            ["agent.activeListening", "Active listening", kpis.agent.activeListening],
+            ["agent.ownership", "Ownership", kpis.agent.ownership],
+            ["agent.resolutionEffectiveness", "Resolution effectiveness", kpis.agent.resolutionEffectiveness],
           ] as const
-        ).map(([label, claim]) => (
+        )
+          .filter(([id]) => show(id))
+          .map(([id, label, claim]) => (
           <ClaimTile
-            key={label}
+            key={id}
             label={label}
             claim={claim}
             onJump={onJump}
@@ -196,12 +232,15 @@ export function KpiBoard({
           />
         ))}
       </Group>
+      )}
 
+      {companyTiles && (
       <Group
         title="Company"
         note="How the company performed — brand, process, policy, commercial risk."
         kind="inferred"
       >
+        {show("company.brandSentiment") && (
         <ClaimTile
           label="Brand sentiment"
           claim={kpis.company.brandSentiment}
@@ -215,19 +254,22 @@ export function KpiBoard({
             </span>
           )}
         />
+        )}
         {(
           [
-            ["SLA adherence", kpis.company.slaAdherence, qualityTone],
-            ["Process effectiveness", kpis.company.processEffectiveness, qualityTone],
-            ["Policy clarity", kpis.company.policyClarity, qualityTone],
-            ["Knowledge accuracy", kpis.company.knowledgeAccuracy, qualityTone],
-            ["Reputational risk", kpis.company.reputationalRisk, riskTone],
-            ["Revenue at risk", kpis.company.revenueAtRisk, riskTone],
-            ["Repeat-contact risk", kpis.company.repeatContactRisk, riskTone],
+            ["company.slaAdherence", "SLA adherence", kpis.company.slaAdherence, qualityTone],
+            ["company.processEffectiveness", "Process effectiveness", kpis.company.processEffectiveness, qualityTone],
+            ["company.policyClarity", "Policy clarity", kpis.company.policyClarity, qualityTone],
+            ["company.knowledgeAccuracy", "Knowledge accuracy", kpis.company.knowledgeAccuracy, qualityTone],
+            ["company.reputationalRisk", "Reputational risk", kpis.company.reputationalRisk, riskTone],
+            ["company.revenueAtRisk", "Revenue at risk", kpis.company.revenueAtRisk, riskTone],
+            ["company.repeatContactRisk", "Repeat-contact risk", kpis.company.repeatContactRisk, riskTone],
           ] as const
-        ).map(([label, claim, tone]) => (
+        )
+          .filter(([id]) => show(id))
+          .map(([id, label, claim, tone]) => (
           <ClaimTile
-            key={label}
+            key={id}
             label={label}
             claim={claim}
             onJump={onJump}
@@ -237,12 +279,15 @@ export function KpiBoard({
           />
         ))}
       </Group>
+      )}
 
+      {conversationTiles && (
       <Group
         title="Conversation"
         note="What happened to the case."
         kind="inferred"
       >
+        {show("conversation.resolutionStatus") && (
         <ClaimTile
           label="Resolution"
           claim={kpis.conversation.resolutionStatus}
@@ -250,6 +295,8 @@ export function KpiBoard({
           render={(v: ResolutionStatus) => RESOLUTION_LABEL[v]}
           tone={(v: ResolutionStatus) => RESOLUTION_TONE[v]}
         />
+        )}
+        {show("conversation.firstContactResolution") && (
         <ClaimTile
           label="First-contact resolution"
           claim={kpis.conversation.firstContactResolution}
@@ -257,6 +304,8 @@ export function KpiBoard({
           render={(v: boolean) => (v ? "Yes" : "No")}
           tone={(v: boolean) => (v ? "good" : "warning")}
         />
+        )}
+        {show("conversation.escalationRisk") && (
         <ClaimTile
           label="Escalation risk"
           claim={kpis.conversation.escalationRisk}
@@ -266,6 +315,8 @@ export function KpiBoard({
           bar={(v: number) => v}
           caption={<Hint>what we expect to happen</Hint>}
         />
+        )}
+        {show("conversation.urgency") && (
         <ClaimTile
           label="Urgency"
           claim={kpis.conversation.urgency}
@@ -273,6 +324,8 @@ export function KpiBoard({
           render={(v: UrgencyLevel) => URGENCY_LABEL[v]}
           tone={(v: UrgencyLevel) => URGENCY_TONE[v]}
         />
+        )}
+        {show("conversation.issueCategory") && (
         <ClaimTile
           label="Issue category"
           claim={kpis.conversation.issueCategory}
@@ -281,7 +334,33 @@ export function KpiBoard({
             <span className="text-[15px] leading-tight">{titleCase(v)}</span>
           )}
         />
+        )}
       </Group>
+      )}
+
+      {customKpis.length > 0 && (
+        <Group title="Your KPIs" note="Scored from the brief you set for this run." kind="inferred">
+          {customKpis.map((kpi, i) => (
+            <ClaimTile
+              key={`${kpi.label}-${i}`}
+              label={kpi.label}
+              claim={kpi}
+              onJump={onJump}
+              render={(v: number | string | boolean) =>
+                typeof v === "number" ? (
+                  <span className="tabular">{pct(v)}</span>
+                ) : (
+                  <span className="text-[15px] leading-tight">{String(v)}</span>
+                )
+              }
+              tone={(v: number | string | boolean) =>
+                typeof v === "number" ? qualityTone(v) : "warning"
+              }
+              bar={(v: number | string | boolean) => (typeof v === "number" ? v : null)}
+            />
+          ))}
+        </Group>
+      )}
 
       <Group
         title="Conversation dynamics"

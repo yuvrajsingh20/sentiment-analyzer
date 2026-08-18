@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useRef, useState, type DragEvent } from "react";
+import { ALL_KPI_IDS } from "@/lib/kpi-catalog";
+import { KpiPicker } from "./kpi-picker";
 import { Notice } from "./ui";
 
 /**
@@ -39,12 +41,19 @@ const SAMPLES = [
 /** Roughly what the model needs; the server enforces the real limit. */
 const SOFT_MAX_BYTES = 400_000;
 
+export type AnalyzePayload = {
+  text: string;
+  fileName: string;
+  kpiIds: string[];
+  customKpis: string;
+};
+
 export function UploadPanel({
   onAnalyze,
   busy,
   error,
 }: {
-  onAnalyze: (payload: { text: string; fileName: string }) => void;
+  onAnalyze: (payload: AnalyzePayload) => void;
   busy: boolean;
   error: string | null;
 }) {
@@ -52,6 +61,8 @@ export function UploadPanel({
   const [localError, setLocalError] = useState<string | null>(null);
   const [pasted, setPasted] = useState("");
   const [loadingSample, setLoadingSample] = useState<string | null>(null);
+  const [kpiIds, setKpiIds] = useState<string[]>(ALL_KPI_IDS);
+  const [customKpis, setCustomKpis] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const takeFile = useCallback(
@@ -76,9 +87,9 @@ export function UploadPanel({
         setLocalError("That file looks empty.");
         return;
       }
-      onAnalyze({ text, fileName: file.name });
+      onAnalyze({ text, fileName: file.name, kpiIds, customKpis });
     },
-    [onAnalyze],
+    [onAnalyze, kpiIds, customKpis],
   );
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
@@ -94,7 +105,7 @@ export function UploadPanel({
     try {
       const response = await fetch(`/samples/${name}`);
       if (!response.ok) throw new Error(String(response.status));
-      onAnalyze({ text: await response.text(), fileName: name });
+      onAnalyze({ text: await response.text(), fileName: name, kpiIds, customKpis });
     } catch {
       setLocalError("Could not load that sample transcript.");
     } finally {
@@ -112,9 +123,8 @@ export function UploadPanel({
           Analyse a call transcript
         </h1>
         <p className="mt-4 max-w-[560px] type-body-lg text-[var(--ink-2)]">
-          Upload a .txt transcript. It is parsed into turns, analysed for
-          sentiment, emotion and call KPIs, then every claim is checked back
-          against the transcript before you see it.
+          Upload a .txt transcript. Choose the KPIs to score, then parse,
+          analyse, and check every claim back against the transcript.
         </p>
       </div>
 
@@ -182,6 +192,14 @@ export function UploadPanel({
         </button>
       </div>
 
+      <KpiPicker
+        selected={kpiIds}
+        custom={customKpis}
+        onSelectedChange={setKpiIds}
+        onCustomChange={setCustomKpis}
+        disabled={busy}
+      />
+
       <div className="mt-10">
         <p className="eyebrow mb-3">Or try a bundled sample</p>
         <div className="grid gap-4 sm:grid-cols-3">
@@ -219,7 +237,14 @@ export function UploadPanel({
         <button
           type="button"
           disabled={busy || pasted.trim().length < 40}
-          onClick={() => onAnalyze({ text: pasted, fileName: "pasted-transcript.txt" })}
+          onClick={() =>
+            onAnalyze({
+              text: pasted,
+              fileName: "pasted-transcript.txt",
+              kpiIds,
+              customKpis,
+            })
+          }
           className="btn btn-fin mt-3"
         >
           Analyse pasted text

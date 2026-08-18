@@ -143,6 +143,7 @@ function stubAnalysis(turns: ReturnType<typeof parseTranscript>): AiAnalysis {
     ],
     risks: [],
     limitations: ["stubbed analysis"],
+    customKpis: [],
   });
 }
 

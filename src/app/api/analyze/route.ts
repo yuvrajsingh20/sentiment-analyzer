@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { AnalysisError, analyze, reconcileUtterances } from "@/lib/analyzer";
 import { saveAnalysis } from "@/lib/history";
+import { normalizeKpiFocus } from "@/lib/kpi-catalog";
 import { computeMetrics } from "@/lib/metrics";
 import { AnalysisResultSchema } from "@/lib/schema";
 import { currentUsername } from "@/lib/session";
@@ -27,6 +28,8 @@ export async function POST(request: Request) {
 
   let fileName = "transcript.txt";
   let raw = "";
+  let kpiIds: unknown;
+  let customKpis: unknown;
 
   const contentType = request.headers.get("content-type") ?? "";
 
@@ -34,6 +37,8 @@ export async function POST(request: Request) {
     if (contentType.includes("multipart/form-data")) {
       const form = await request.formData();
       const file = form.get("file");
+      kpiIds = form.get("kpiIds");
+      customKpis = form.get("customKpis");
 
       if (!(file instanceof File)) {
         return bad("Attach a .txt transcript file.", 400);
@@ -59,6 +64,8 @@ export async function POST(request: Request) {
       if (typeof o.fileName === "string" && o.fileName.trim()) {
         fileName = o.fileName.trim();
       }
+      kpiIds = o.kpiIds;
+      customKpis = o.customKpis;
       if (new TextEncoder().encode(raw).length > MAX_BYTES) {
         return bad("That transcript exceeds the size limit.", 413);
       }
@@ -87,10 +94,13 @@ export async function POST(request: Request) {
 
   /* ── 4–7. orchestrate, schema-validate, verify evidence, gate ──────── */
 
+  const kpiFocus = normalizeKpiFocus(kpiIds, customKpis);
+
   try {
     const { analysis, quality, pipeline, model } = await analyze({
       fileName,
       turns,
+      kpiFocus,
     });
 
     // 8. Fill any unlabelled turn so the timeline has one point per turn.
@@ -108,6 +118,8 @@ export async function POST(request: Request) {
         pipeline,
         latencyMs: Date.now() - startedAt,
         characters: raw.length,
+        kpiFocus: kpiFocus.all ? undefined : kpiFocus.ids,
+        customKpiLabels: kpiFocus.custom.length ? kpiFocus.custom : undefined,
       },
       transcript: turns,
       analysis: reconciled,

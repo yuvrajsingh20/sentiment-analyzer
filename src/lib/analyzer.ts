@@ -12,6 +12,10 @@ import {
   type QualityReport,
   type TranscriptTurn,
 } from "./schema";
+import {
+  kpiFocusBrief,
+  type KpiFocus,
+} from "./kpi-catalog";
 import { classifySpeakers, renderForModel } from "./transcript";
 import { verifyAnalysis, type VerificationOutcome } from "./verify";
 
@@ -41,6 +45,7 @@ export class AnalysisError extends Error {
 export type AnalyzeInput = {
   fileName: string;
   turns: TranscriptTurn[];
+  kpiFocus?: KpiFocus;
 };
 
 export type AnalyzeOutput = {
@@ -148,10 +153,12 @@ async function analyzeViaGemini(
     speakerRoles: speakerRoles(input.turns),
     transcript: renderForModel(input.turns),
     retryFeedback,
+    kpiBrief: input.kpiFocus ? kpiFocusBrief(input.kpiFocus) : "",
   })}
 
-Return one JSON object with these top-level keys: overall, summary, utterances, emotions, kpis, keyMoments, actionItems, coaching, risks, limitations.
-kpis must contain customer, agent, company, conversation. Keep quotes short.`;
+Return one JSON object with these top-level keys: overall, summary, utterances, emotions, kpis, keyMoments, actionItems, coaching, risks, limitations, customKpis.
+kpis must contain customer, agent, company, conversation. Keep quotes short.
+customKpis is an array — empty if none were requested.`;
 
   const generationConfig = {
     temperature: 0.2,
@@ -625,6 +632,29 @@ function coerceCoaching(item: unknown) {
   };
 }
 
+function coerceCustomKpi(item: unknown) {
+  if (typeof item === "string") {
+    return {
+      label: item,
+      value: null,
+      status: "insufficient_evidence",
+      confidence: 0,
+      reason: "",
+      evidence: [],
+    };
+  }
+  const o = pickObject(item);
+  if (!o) return null;
+  return {
+    label: o.label ?? o.name ?? o.kpi ?? "Custom KPI",
+    value: "value" in o ? o.value : (o.score ?? null),
+    status: o.status ?? "ok",
+    confidence: o.confidence ?? 0.5,
+    reason: o.reason ?? o.reasoning ?? "",
+    evidence: coerceEvidenceList(o.evidence),
+  };
+}
+
 function coerceMoment(item: unknown) {
   const o = pickObject(item);
   if (!o) return null;
@@ -677,6 +707,7 @@ function normalizeModelPayload(raw: unknown): unknown {
     coaching: asArray(obj.coaching).map(coerceCoaching).filter(Boolean),
     risks: flattenStringList(obj.risks),
     limitations: flattenStringList(obj.limitations),
+    customKpis: asArray(obj.customKpis).map(coerceCustomKpi).filter(Boolean),
   };
 }
 

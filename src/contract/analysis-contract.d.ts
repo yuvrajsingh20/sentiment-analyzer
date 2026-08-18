@@ -9,5 +9,6 @@ declare module "@/contract/analysis-contract.mjs" {
     speakerRoles: Array<{ speaker: string; role: string }>;
     transcript: string;
     retryFeedback?: string;
+    kpiBrief?: string;
   }): string;
 }

@@ -21,7 +21,7 @@ import {
 import { KpiBoard } from "@/components/kpi-board";
 import { QualityPanel } from "@/components/quality-panel";
 import { TranscriptView } from "@/components/transcript-view";
-import { AnalysingState, UploadPanel } from "@/components/upload-panel";
+import { AnalysingState, UploadPanel, type AnalyzePayload } from "@/components/upload-panel";
 import { BrandLogo, Card, ThemeToggle } from "@/components/ui";
 import { WorkflowTimeline } from "@/components/workflow-popover";
 import { formatTimestamp } from "@/lib/display";
@@ -129,7 +129,7 @@ export function DashboardClient({
   }, []);
 
   const analyze = useCallback(
-    async ({ text, fileName }: { text: string; fileName: string }) => {
+    async ({ text, fileName, kpiIds, customKpis }: AnalyzePayload) => {
       setBusy(true);
       setError(null);
       setPendingName(fileName);
@@ -139,7 +139,7 @@ export function DashboardClient({
         const response = await fetch("/api/analyze", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ text, fileName }),
+          body: JSON.stringify({ text, fileName, kpiIds, customKpis }),
         });
 
         if (response.status === 401) {
@@ -522,7 +522,13 @@ function Results({
       />
 
       {/* KPI board */}
-      <KpiBoard kpis={analysis.kpis} metrics={metrics} onJump={onJump} />
+      <KpiBoard
+        kpis={analysis.kpis}
+        customKpis={analysis.customKpis}
+        focusIds={result.meta.kpiFocus}
+        metrics={metrics}
+        onJump={onJump}
+      />
 
       {/* emotion + speakers */}
       <div className="grid gap-6 lg:grid-cols-2">
