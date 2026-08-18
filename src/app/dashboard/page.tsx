@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
+import { n8nConfigured } from "@/lib/runtime";
 import { DashboardClient } from "./dashboard-client";
 
 export const metadata = { title: "Dashboard — Sentiment Analyzer" };
@@ -18,8 +19,9 @@ export default async function DashboardPage({
   const initialId = id && /^[a-zA-Z0-9_-]+$/.test(id) ? id : undefined;
 
   // The dashboard chip is honest: n8n is required. "direct" only appears on
-  // historical records saved before the Gemini/n8n-only cutover.
-  const pipeline = process.env.N8N_WEBHOOK_URL ? "n8n" : "direct";
+  // historical records saved before the Gemini/n8n-only cutover, or when
+  // Vercel still has a localhost webhook that it cannot reach.
+  const pipeline = n8nConfigured() ? "n8n" : "direct";
 
   return (
     <DashboardClient

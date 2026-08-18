@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { GoogleSignIn } from "@/components/google-sign-in";
+import { PasswordField } from "@/components/password-field";
 import { Notice, ThemeToggle } from "@/components/ui";
 
 function Divider({ label }: { label: string }) {
@@ -51,7 +52,12 @@ export function SignupForm({
       };
 
       if (!response.ok) {
-        setError(body.error ?? "Could not create the account.");
+        setError(
+          body.error ??
+            (response.status >= 500
+              ? "The server could not create the account. Set AUTH_SECRET in Vercel and redeploy."
+              : "Could not create the account."),
+        );
         setBusy(false);
         return;
       }
@@ -114,35 +120,27 @@ export function SignupForm({
           />
         </label>
 
-        <label className="block">
-          <span className="eyebrow">Password</span>
-          <input
-            name="password"
-            type="password"
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            minLength={8}
-            disabled={busy}
-            className="field mt-1.5"
-          />
-        </label>
+        <PasswordField
+          name="password"
+          autoComplete="new-password"
+          label="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          minLength={8}
+          disabled={busy}
+        />
 
-        <label className="block">
-          <span className="eyebrow">Confirm password</span>
-          <input
-            name="confirm"
-            type="password"
-            autoComplete="new-password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            required
-            minLength={8}
-            disabled={busy}
-            className="field mt-1.5"
-          />
-        </label>
+        <PasswordField
+          name="confirm"
+          autoComplete="new-password"
+          label="Confirm password"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          required
+          minLength={8}
+          disabled={busy}
+        />
 
         <button type="submit" disabled={busy} className="btn btn-primary w-full">
           {busy ? "Creating account…" : "Create account"}

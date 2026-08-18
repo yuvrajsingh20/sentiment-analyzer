@@ -70,6 +70,10 @@ async function runCodeNode(node, items, outputs) {
       last: () => items[items.length - 1],
     },
     $env: process.env,
+    $vars: {
+      N8N_WEBHOOK_SECRET: process.env.N8N_WEBHOOK_SECRET,
+      GEMINI_MODEL: process.env.GEMINI_MODEL,
+    },
     $: (name) => ({
       first: () => (outputs.get(name) ?? [{ json: {} }])[0],
       all: () => outputs.get(name) ?? [],

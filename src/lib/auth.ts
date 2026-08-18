@@ -49,13 +49,19 @@ async function hmacKey(secret: string): Promise<CryptoKey> {
   );
 }
 
+export const AUTH_SECRET_MISSING =
+  "Sign-in is not configured on this server. Set AUTH_SECRET in Vercel and redeploy.";
+
+export function isAuthSecretConfigured(): boolean {
+  const secret = process.env.AUTH_SECRET;
+  return Boolean(secret && secret.length >= 16);
+}
+
 function authSecret(): string {
   const secret = process.env.AUTH_SECRET;
   if (secret && secret.length >= 16) return secret;
   if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "AUTH_SECRET must be set to a value of at least 16 characters in production.",
-    );
+    throw new Error(AUTH_SECRET_MISSING);
   }
   // Dev-only default so `npm run dev` works from a fresh clone.
   return "dev-only-insecure-secret-do-not-ship";

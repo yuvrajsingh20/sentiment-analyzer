@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import {
+  AUTH_SECRET_MISSING,
   SESSION_COOKIE,
   createSession,
+  isAuthSecretConfigured,
   sessionCookieOptions,
 } from "@/lib/auth";
 import { fetchGoogleUser, isVerifiedEmail } from "@/lib/google-callback";
@@ -13,6 +15,10 @@ export const runtime = "nodejs";
 
 /** GIS popup sends an access token. No client secret required. */
 export async function POST(request: Request) {
+  if (process.env.NODE_ENV === "production" && !isAuthSecretConfigured()) {
+    return NextResponse.json({ error: AUTH_SECRET_MISSING }, { status: 503 });
+  }
+
   if (!googleClientId()) {
     return NextResponse.json(
       { error: "Google sign-in is not configured." },

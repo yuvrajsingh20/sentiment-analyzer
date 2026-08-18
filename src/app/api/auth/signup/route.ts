@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import {
+  AUTH_SECRET_MISSING,
   SESSION_COOKIE,
   createSession,
+  isAuthSecretConfigured,
   sessionCookieOptions,
 } from "@/lib/auth";
 import { clientKey, rateLimited } from "@/lib/rate-limit";
@@ -10,6 +12,10 @@ import { createPasswordUser } from "@/lib/users";
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  if (process.env.NODE_ENV === "production" && !isAuthSecretConfigured()) {
+    return NextResponse.json({ error: AUTH_SECRET_MISSING }, { status: 503 });
+  }
+
   if (rateLimited(`signup:${clientKey(request)}`)) {
     return NextResponse.json(
       { error: "Too many attempts. Wait a minute and try again." },

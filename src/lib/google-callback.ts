@@ -5,6 +5,7 @@ import {
   OAUTH_STATE_COOKIE,
   SESSION_COOKIE,
   createSession,
+  isAuthSecretConfigured,
   sessionCookieOptions,
 } from "@/lib/auth";
 import { googleCallbackUrl, googleOAuthConfig } from "@/lib/google-oauth";
@@ -82,6 +83,10 @@ function clearOAuthCookies(response: NextResponse) {
 
 /** Handles the Google OAuth redirect after the user approves access. */
 export async function handleGoogleCallback(request: Request): Promise<NextResponse> {
+  if (process.env.NODE_ENV === "production" && !isAuthSecretConfigured()) {
+    return failRedirect(new URL(request.url), "google_not_configured");
+  }
+
   const config = googleOAuthConfig();
   if (!config) return failRedirect(new URL(request.url), "google_not_configured");
 

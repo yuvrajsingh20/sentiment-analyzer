@@ -341,17 +341,39 @@ credential.
 
 1. Import `n8n/sentiment-analyzer.workflow.json`.
 2. Create a **Header Auth** credential named `Gemini API`: name
-   `x-goog-api-key`, value your Gemini API key.
-3. Set `N8N_WEBHOOK_SECRET` (and optionally `GEMINI_MODEL`) in the n8n
-   environment.
-4. Activate, copy the **Production URL** into the app's `N8N_WEBHOOK_URL`.
+   `x-goog-api-key`, value your Gemini API key. Attach it on the
+   **Gemini — analyse call** node if import did not map it.
+3. Optionally set `N8N_WEBHOOK_SECRET` (and `GEMINI_MODEL`) in n8n
+   **Variables** (Cloud) or environment (self-hosted).
+4. Toggle the workflow **Active**. Copy the Webhook node's **Production URL**
+   (not the Test URL) — it looks like
+   `https://<instance>.app.n8n.cloud/webhook/sentiment-analyze`.
 
 ### Deployment (Vercel)
 
-Push the repo, import it, set the environment variables above. The analysis
-route declares `maxDuration = 300`; a long transcript at high effort can take
-30–90 seconds, so a plan with a matching function timeout is needed. Netlify
-works the same way via `@netlify/plugin-nextjs`.
+The app on Vercel and the n8n workflow are two services. Combining them is
+one environment variable:
+
+1. Vercel → Settings → Environment Variables (Production), then **Redeploy**:
+
+   | Variable | Value |
+   |---|---|
+   | `N8N_WEBHOOK_URL` | Production URL from the n8n Webhook node |
+   | `N8N_WEBHOOK_SECRET` | same string as in n8n, if you set one |
+   | `AUTH_SECRET` | `openssl rand -base64 32` — login fails without this |
+   | `MONGODB_URI` / `MONGODB_DB` | Atlas, if you want history |
+   | `GOOGLE_CLIENT_ID` | Continue with Google |
+
+   Do **not** set `N8N_WEBHOOK_URL` to `localhost`. Vercel cannot reach your
+   laptop. Do **not** put `GEMINI_API_KEY` on Vercel — it belongs in n8n.
+
+2. Atlas → Network Access: allow Vercel (`0.0.0.0/0` is fine for a demo).
+3. Google Cloud OAuth: add `https://<your-app>.vercel.app` as an Authorized
+   JavaScript origin.
+
+The analysis route declares `maxDuration = 300`. A long transcript can take
+30–90 seconds, so a plan with a matching function timeout is needed. Confirm
+wiring with `GET /api/status` (`n8n` must be `true`).
 
 ---
 

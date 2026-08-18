@@ -12,9 +12,10 @@ export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   const isAuthEndpoint = pathname.startsWith("/api/auth/");
+  const isPublicApi = pathname === "/api/status";
   const isPublicPage =
     pathname === "/" || pathname === "/login" || pathname === "/signup";
-  if (isAuthEndpoint || isPublicPage) return NextResponse.next();
+  if (isAuthEndpoint || isPublicApi || isPublicPage) return NextResponse.next();
 
   const username = await verifySession(
     request.cookies.get(SESSION_COOKIE)?.value,

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { GoogleSignIn } from "@/components/google-sign-in";
+import { PasswordField } from "@/components/password-field";
 import { Notice, ThemeToggle } from "@/components/ui";
 
 function Divider({ label }: { label: string }) {
@@ -47,7 +48,12 @@ export function LoginForm({
       };
 
       if (!response.ok) {
-        setError(body.error ?? "Sign-in failed.");
+        setError(
+          body.error ??
+            (response.status >= 500
+              ? "The server could not complete sign-in. Set AUTH_SECRET in Vercel and redeploy."
+              : "Sign-in failed."),
+        );
         setBusy(false);
         return;
       }
@@ -110,19 +116,15 @@ export function LoginForm({
           />
         </label>
 
-        <label className="block">
-          <span className="eyebrow">Password</span>
-          <input
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            disabled={busy}
-            className="field mt-1.5"
-          />
-        </label>
+        <PasswordField
+          name="password"
+          autoComplete="current-password"
+          label="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          disabled={busy}
+        />
 
         <button type="submit" disabled={busy} className="btn btn-primary w-full">
           {busy ? "Signing in…" : "Sign in"}

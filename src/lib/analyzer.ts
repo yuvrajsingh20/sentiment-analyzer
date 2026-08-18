@@ -1,5 +1,11 @@
 import { DEFAULT_MODEL } from "./prompt";
 import {
+  n8nConfigured,
+  n8nMisconfiguredOnVercel,
+  n8nUrlLooksLikeTestWebhook,
+  n8nWebhookUrl,
+} from "./runtime";
+import {
   AiAnalysisSchema,
   type AiAnalysis,
   type AnalysisPipeline,
@@ -8,6 +14,8 @@ import {
 } from "./schema";
 import { classifySpeakers, renderForModel } from "./transcript";
 import { verifyAnalysis, type VerificationOutcome } from "./verify";
+
+export { n8nConfigured } from "./runtime";
 
 /**
  * Orchestration.
@@ -48,10 +56,6 @@ export type AnalyzeOutput = {
 /** One corrective retry. Beyond that the failure is not the kind a re-run fixes. */
 const MAX_ATTEMPTS = 2;
 
-export function n8nConfigured(): boolean {
-  return Boolean(process.env.N8N_WEBHOOK_URL);
-}
-
 function fallbackModelId(): string {
   return process.env.GEMINI_MODEL?.trim() || DEFAULT_MODEL;
 }
@@ -87,7 +91,9 @@ function buildRequestPayload(input: AnalyzeInput, retryFeedback?: string) {
 export async function analyze(input: AnalyzeInput): Promise<AnalyzeOutput> {
   if (!n8nConfigured()) {
     throw new AnalysisError(
-      "N8N_WEBHOOK_URL is not set. Analysis is orchestrated through n8n (UI → n8n → Gemini), not called from Next.js. Point this at the imported workflow, or run `npm run n8n:simulate` for local plumbing.",
+      n8nMisconfiguredOnVercel()
+        ? "N8N_WEBHOOK_URL on Vercel points at localhost. Vercel cannot reach your laptop — paste the hosted n8n Production URL and redeploy."
+        : "N8N_WEBHOOK_URL is not set. Analysis is orchestrated through n8n (UI → n8n → Gemini), not called from Next.js. Point this at the imported workflow, or run `npm run n8n:simulate` for local plumbing.",
       503,
     );
   }
@@ -132,7 +138,13 @@ async function analyzeViaN8n(
   input: AnalyzeInput,
   retryFeedback?: string,
 ): Promise<N8nAnalysis> {
-  const url = process.env.N8N_WEBHOOK_URL as string;
+  const url = n8nWebhookUrl() as string;
+  if (n8nUrlLooksLikeTestWebhook(url)) {
+    throw new AnalysisError(
+      "N8N_WEBHOOK_URL is the n8n Test URL. Activate the workflow and copy the Production URL from the Webhook node.",
+      503,
+    );
+  }
   const timeoutMs = Number(process.env.N8N_TIMEOUT_MS) || 120_000;
   const payload = buildRequestPayload(input, retryFeedback);
 
@@ -205,6 +217,15 @@ function explainN8nError(httpStatus: number, raw: string): AnalysisError {
     return new AnalysisError(
       "Gemini is rate limited. Wait a moment and try again.",
       429,
+    );
+  }
+  if (
+    httpStatus === 404 ||
+    /not registered|webhook .*not registered|must be active/i.test(blob)
+  ) {
+    return new AnalysisError(
+      "n8n did not register this webhook. Activate the workflow and use the Production URL, not the Test URL.",
+      502,
     );
   }
   if (
