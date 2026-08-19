@@ -116,11 +116,12 @@ export async function POST(request: Request) {
     if (planInfo.allowedKpis) {
       const allowed = new Set(planInfo.allowedKpis);
       if (typeof kpiIds === "string") {
+        const rawIds = kpiIds;
         try {
-          const parsed = JSON.parse(kpiIds) as string[];
+          const parsed = JSON.parse(rawIds) as string[];
           kpiIds = JSON.stringify(parsed.filter((id: string) => allowed.has(id)));
         } catch {
-          kpiIds = JSON.stringify(kpiIds.split(",").filter((id: string) => allowed.has(id.trim())));
+          kpiIds = JSON.stringify(rawIds.split(",").filter((id: string) => allowed.has(id.trim())));
         }
       } else if (Array.isArray(kpiIds)) {
         kpiIds = (kpiIds as string[]).filter((id: string) => allowed.has(id));
