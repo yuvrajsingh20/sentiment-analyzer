@@ -21,6 +21,7 @@ import {
 import { KpiBoard } from "@/components/kpi-board";
 import { QualityPanel } from "@/components/quality-panel";
 import { TranscriptView } from "@/components/transcript-view";
+import { SubscriptionModal } from "@/components/subscription-modal";
 import { AnalysingState, UploadPanel, type AnalyzePayload } from "@/components/upload-panel";
 import { BrandLogo, Card, ThemeToggle } from "@/components/ui";
 import { WorkflowTimeline } from "@/components/workflow-popover";
@@ -57,6 +58,9 @@ export function DashboardClient({
   const [pendingName, setPendingName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [focusTurn, setFocusTurn] = useState<number | null>(null);
+  const [showSubscription, setShowSubscription] = useState(false);
+  const [subscriptionReason, setSubscriptionReason] = useState<"free_limit" | "custom_kpi" | undefined>();
+  const [planInfo, setPlanInfo] = useState<{ plan: "free" | "basic" | "pro"; analysisCount: number; limit: number | null; allowedKpis: string[] | null } | null>(null);
 
   const setUrl = useCallback(
     (id: string | null) => {
@@ -118,9 +122,20 @@ export function DashboardClient({
     [history, router, setUrl],
   );
 
+  const refreshPlan = useCallback(async () => {
+    try {
+      const res = await fetch("/api/subscription/status");
+      if (res.ok) {
+        const data = await res.json() as { plan: "free" | "basic" | "pro"; analysisCount: number; limit: number | null; allowedKpis: string[] | null };
+        setPlanInfo(data);
+      }
+    } catch { /* best-effort */ }
+  }, []);
+
   useEffect(() => {
     void refreshHistory();
-  }, [refreshHistory]);
+    void refreshPlan();
+  }, [refreshHistory, refreshPlan]);
 
   useEffect(() => {
     if (initialId) void openHistory(initialId);
@@ -152,7 +167,20 @@ export function DashboardClient({
           historyId?: string;
           error?: string;
           detail?: string;
+          upgradeRequired?: boolean;
+          planUpgradeRequired?: boolean;
         };
+
+        if (body.upgradeRequired) {
+          setSubscriptionReason("free_limit");
+          setShowSubscription(true);
+          return;
+        }
+        if (body.planUpgradeRequired) {
+          setSubscriptionReason("custom_kpi");
+          setShowSubscription(true);
+          return;
+        }
 
         if (!response.ok || !body.result) {
           setError(
@@ -164,6 +192,7 @@ export function DashboardClient({
 
         setResult(body.result);
         void refreshHistory();
+        void refreshPlan();
         if (body.historyId) {
           setHistoryId(body.historyId);
           setUrl(body.historyId);
@@ -174,7 +203,7 @@ export function DashboardClient({
         setBusy(false);
       }
     },
-    [refreshHistory, router, setUrl],
+    [refreshHistory, refreshPlan, router, setUrl],
   );
 
   async function signOut() {
@@ -237,7 +266,16 @@ export function DashboardClient({
           </>
         ) : (
           <div>
-            <UploadPanel onAnalyze={analyze} busy={busy} error={error} />
+            <UploadPanel
+              onAnalyze={analyze}
+              busy={busy}
+              error={error}
+              plan={planInfo?.plan}
+              analysisCount={planInfo?.analysisCount ?? 0}
+              analysisLimit={planInfo?.limit ?? null}
+              allowedKpis={planInfo?.allowedKpis}
+              onUpgradeClick={() => { setSubscriptionReason("free_limit"); setShowSubscription(true); }}
+            />
             <section className="mx-auto mt-12 w-full max-w-[880px]">
               <p className="eyebrow">History</p>
               <h2 className="mt-2 type-headline">Previous analyses</h2>
@@ -251,6 +289,12 @@ export function DashboardClient({
           </div>
         )}
       </main>
+
+      <SubscriptionModal
+        open={showSubscription}
+        onClose={() => setShowSubscription(false)}
+        reason={subscriptionReason}
+      />
     </div>
   );
 }
@@ -321,7 +365,7 @@ function Header({
                 : "var(--warning)",
             }}
           />
-          {live ? "Gemini running" : ready ? "Gemini" : "Gemini not configured"}
+          {live ? "Processing" : ready ? "Ready" : "Engine offline"}
         </span>
 
         {result && (
@@ -331,7 +375,7 @@ function Header({
             </span>
             <span className="tabular">
               · {formatTimestamp(result.meta.analyzedAt)} ·{" "}
-              {(result.meta.latencyMs / 1000).toFixed(1)}s · {result.meta.model}
+              {(result.meta.latencyMs / 1000).toFixed(1)}s · SA Pipeline
             </span>
           </span>
         )}

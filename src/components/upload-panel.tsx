@@ -52,16 +52,28 @@ export function UploadPanel({
   onAnalyze,
   busy,
   error,
+  plan,
+  analysisCount,
+  analysisLimit,
+  allowedKpis,
+  onUpgradeClick,
 }: {
   onAnalyze: (payload: AnalyzePayload) => void;
   busy: boolean;
   error: string | null;
+  plan?: "free" | "basic" | "pro";
+  analysisCount?: number;
+  analysisLimit?: number | null;
+  allowedKpis?: string[] | null;
+  onUpgradeClick?: () => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [pasted, setPasted] = useState("");
   const [loadingSample, setLoadingSample] = useState<string | null>(null);
-  const [kpiIds, setKpiIds] = useState<string[]>(ALL_KPI_IDS);
+  const [kpiIds, setKpiIds] = useState<string[]>(
+    allowedKpis ? ALL_KPI_IDS.filter((id) => allowedKpis.includes(id)) : ALL_KPI_IDS,
+  );
   const [customKpis, setCustomKpis] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -143,7 +155,7 @@ export function UploadPanel({
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
-        className="card-product p-8 text-center transition-colors"
+        className="card-product p-5 text-center transition-colors sm:p-8"
         style={{
           background: dragging ? "var(--surface-2)" : "var(--surface-1)",
         }}
@@ -192,12 +204,28 @@ export function UploadPanel({
         </button>
       </div>
 
+      {plan === "free" && analysisLimit !== undefined && analysisLimit !== null && (
+        <div className="mt-6 flex items-center justify-between rounded-[10px] border border-[var(--border)] bg-[var(--surface-1)] px-5 py-3">
+          <span className="text-[13px] text-[var(--ink-2)]">
+            Free analyses used: <span className="font-semibold text-[var(--ink-1)]">{analysisCount ?? 0}</span> / {analysisLimit}
+          </span>
+          {(analysisCount ?? 0) >= analysisLimit && (
+            <button type="button" onClick={onUpgradeClick} className="btn btn-fin text-[12px] px-3 py-1">
+              Upgrade
+            </button>
+          )}
+        </div>
+      )}
+
       <KpiPicker
         selected={kpiIds}
         custom={customKpis}
         onSelectedChange={setKpiIds}
         onCustomChange={setCustomKpis}
         disabled={busy}
+        plan={plan}
+        allowedKpis={allowedKpis}
+        onUpgradeClick={onUpgradeClick}
       />
 
       <div className="mt-10">
@@ -274,7 +302,7 @@ export function AnalysingState({ fileName }: { fileName: string }) {
       <p className="mt-2 type-body-sm text-[var(--ink-2)]">
         {saved
           ? "Loading the stored dashboard."
-          : "Watch the timeline under the header — Gemini is the long step."}
+          : "Watch the pipeline progress above — inference is the longest step."}
       </p>
 
       <div
