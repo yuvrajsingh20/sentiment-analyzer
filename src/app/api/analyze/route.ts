@@ -5,7 +5,9 @@ import { normalizeKpiFocus } from "@/lib/kpi-catalog";
 import { computeMetrics } from "@/lib/metrics";
 import { AnalysisResultSchema } from "@/lib/schema";
 import { currentUsername } from "@/lib/session";
+import { canAnalyze, canUseCustomKpis, getUserPlanInfo } from "@/lib/subscription";
 import { normalizeTranscriptText, parseTranscript } from "@/lib/transcript";
+import { incrementAnalysisCount } from "@/lib/users";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -92,6 +94,40 @@ export async function POST(request: Request) {
     return bad("No readable dialogue was found in that file.", 422);
   }
 
+  /* ── subscription gate ────────────────────────────────────────────── */
+
+  const username = await currentUsername();
+  if (username) {
+    const planInfo = await getUserPlanInfo(username);
+    const check = canAnalyze(planInfo);
+    if (!check.allowed) {
+      return NextResponse.json(
+        { error: "Free trial exhausted. Please subscribe to continue.", upgradeRequired: true },
+        { status: 403, headers: { "cache-control": "no-store" } },
+      );
+    }
+    if (customKpis && !canUseCustomKpis(planInfo.plan)) {
+      return NextResponse.json(
+        { error: "Custom KPIs require the Pro plan.", planUpgradeRequired: true },
+        { status: 403, headers: { "cache-control": "no-store" } },
+      );
+    }
+    // Enforce KPI allowlist per plan
+    if (planInfo.allowedKpis) {
+      const allowed = new Set(planInfo.allowedKpis);
+      if (typeof kpiIds === "string") {
+        try {
+          const parsed = JSON.parse(kpiIds) as string[];
+          kpiIds = JSON.stringify(parsed.filter((id: string) => allowed.has(id)));
+        } catch {
+          kpiIds = JSON.stringify(kpiIds.split(",").filter((id: string) => allowed.has(id.trim())));
+        }
+      } else if (Array.isArray(kpiIds)) {
+        kpiIds = (kpiIds as string[]).filter((id: string) => allowed.has(id));
+      }
+    }
+  }
+
   /* ── 4–7. orchestrate, schema-validate, verify evidence, gate ──────── */
 
   const kpiFocus = normalizeKpiFocus(kpiIds, customKpis);
@@ -129,9 +165,9 @@ export async function POST(request: Request) {
 
     let historyId: string | null = null;
     try {
-      const username = await currentUsername();
       if (username) {
         historyId = (await saveAnalysis(username, result)).id;
+        await incrementAnalysisCount(username);
       }
     } catch (error) {
       console.error("[analyze] history save failed", error);

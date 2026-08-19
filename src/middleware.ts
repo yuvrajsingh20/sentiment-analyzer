@@ -12,7 +12,7 @@ export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
   const isAuthEndpoint = pathname.startsWith("/api/auth/");
-  const isPublicApi = pathname === "/api/status";
+  const isPublicApi = pathname === "/api/status" || pathname === "/api/subscription/webhook";
   const isPublicPage =
     pathname === "/" || pathname === "/login" || pathname === "/signup";
   if (isAuthEndpoint || isPublicApi || isPublicPage) return NextResponse.next();

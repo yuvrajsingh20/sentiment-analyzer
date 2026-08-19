@@ -10,12 +10,19 @@ import { promisify } from "node:util";
 
 const scryptAsync = promisify(scrypt);
 
+export type SubscriptionPlan = "free" | "basic" | "pro";
+
 export type UserRecord = {
   username: string;
   passwordHash?: string;
   email?: string;
   provider: "password" | "google";
   createdAt: string;
+  plan: SubscriptionPlan;
+  analysisCount: number;
+  subscriptionId?: string;
+  subscriptionStatus?: "active" | "cancelled" | "expired";
+  subscriptionEnd?: string;
 };
 
 type UserStore = { users: UserRecord[] };
@@ -139,10 +146,39 @@ export async function createPasswordUser(args: {
       passwordHash: await hashPassword(args.password),
       provider: "password",
       createdAt: new Date().toISOString(),
+      plan: "free",
+      analysisCount: 0,
     };
     store.users.push(user);
     await writeStore(store);
     return { ok: true, user };
+  });
+}
+
+export async function updateUser(
+  username: string,
+  patch: Partial<Omit<UserRecord, "username">>,
+): Promise<UserRecord | null> {
+  const key = normalizeUsername(username);
+  return withLock(async () => {
+    const store = await readStore();
+    const user = store.users.find((u) => u.username === key);
+    if (!user) return null;
+    Object.assign(user, patch);
+    await writeStore(store);
+    return user;
+  });
+}
+
+export async function incrementAnalysisCount(username: string): Promise<number> {
+  const key = normalizeUsername(username);
+  return withLock(async () => {
+    const store = await readStore();
+    const user = store.users.find((u) => u.username === key);
+    if (!user) return 0;
+    user.analysisCount = (user.analysisCount ?? 0) + 1;
+    await writeStore(store);
+    return user.analysisCount;
   });
 }
 
@@ -154,6 +190,8 @@ export async function upsertGoogleUser(email: string): Promise<UserRecord> {
     email: username,
     provider: "google",
     createdAt: new Date().toISOString(),
+    plan: "free",
+    analysisCount: 0,
   };
   try {
     return await withLock(async () => {
