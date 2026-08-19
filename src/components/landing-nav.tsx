@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/#product", label: "Product" },
   { href: "/#how-it-works", label: "How it works" },
   { href: "/#quality", label: "Quality" },
+  { href: "/#pricing", label: "Pricing" },
 ] as const;
 
 export function LandingNav() {

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, JetBrains_Mono } from "next/font/google";
+import { WhatsAppButton } from "@/components/whatsapp-button";
 import "./globals.css";
 
 const geist = Geist({
@@ -43,6 +44,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-dvh antialiased" suppressHydrationWarning>
         {children}
+        <WhatsAppButton />
       </body>
     </html>
   );
