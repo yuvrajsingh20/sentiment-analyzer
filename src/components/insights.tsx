@@ -28,7 +28,7 @@ export function CallSnapshot({ result }: { result: AnalysisResult }) {
   const lead = [...result.analysis.emotions].sort(
     (a, b) => b.intensity - a.intensity,
   )[0];
-  const viaGemini = result.meta.pipeline === "direct" || result.meta.pipeline === "n8n";
+  const engineReady = result.meta.pipeline === "direct" || result.meta.pipeline === "n8n";
 
   const tiles = [
     {
@@ -50,10 +50,10 @@ export function CallSnapshot({ result }: { result: AnalysisResult }) {
       color: undefined,
     },
     {
-      eyebrow: "Architecture",
-      value: viaGemini ? "Gemini" : "Gemini not configured",
-      hint: result.meta.model,
-      color: viaGemini ? "var(--good-ink)" : TONE_COLOR.warning,
+      eyebrow: "Engine",
+      value: engineReady ? "SA Pipeline" : "Offline",
+      hint: `v${result.meta.latencyMs ? Math.round(result.meta.latencyMs / 100) / 10 : 0}s inference`,
+      color: engineReady ? "var(--good-ink)" : TONE_COLOR.warning,
     },
   ];
 

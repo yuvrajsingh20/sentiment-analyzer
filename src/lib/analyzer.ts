@@ -162,7 +162,7 @@ customKpis is an array — empty if none were requested.`;
 
   const generationConfig = {
     temperature: 0.2,
-    maxOutputTokens: 8192,
+    maxOutputTokens: 65536,
     responseMimeType: "application/json",
   };
 
@@ -196,7 +196,7 @@ customKpis is an array — empty if none were requested.`;
         requestFor(model, thinking),
       );
       return {
-        analysis: parseAnalysis(payload.analysis, "Gemini API"),
+        analysis: parseAnalysis(payload.analysis, "analysis engine"),
         model: payload.model || model,
       };
     } catch (error) {
@@ -224,7 +224,7 @@ customKpis is an array — empty if none were requested.`;
     }
   }
 
-  throw lastError ?? new AnalysisError("Gemini did not return an analysis.", 502);
+  throw lastError ?? new AnalysisError("The analysis engine did not return a result. Please try again.", 502);
 }
 
 async function callGeminiWithThinkingFallback(
@@ -307,8 +307,8 @@ async function callGeminiOnce(
     const aborted = error instanceof Error && error.name === "AbortError";
     throw new AnalysisError(
       aborted
-        ? `Gemini did not respond within ${Math.round(GEMINI_TIMEOUT_MS / 1000)}s.`
-        : "Could not reach the Gemini API.",
+        ? `Analysis engine did not respond within ${Math.round(GEMINI_TIMEOUT_MS / 1000)}s. Try again.`
+        : "Could not reach the analysis engine. Please try again.",
       504,
       error instanceof Error ? error.message : undefined,
     );
@@ -339,18 +339,18 @@ async function callGemini(
       continue;
     }
 
-    throw explainGeminiError(last.status, blob, msg);
+    throw explainEngineError(last.status, blob, msg);
   }
 
-  throw explainGeminiError(last?.status ?? 502, "", "Gemini did not respond.");
+  throw explainEngineError(last?.status ?? 502, "", "Engine did not respond.");
 }
 
-function explainGeminiError(httpStatus: number, blob: string, msg: string): AnalysisError {
+function explainEngineError(httpStatus: number, blob: string, msg: string): AnalysisError {
   if (httpStatus === 429 || /rate limited|RESOURCE_EXHAUSTED/i.test(blob)) {
-    return new AnalysisError("Gemini is rate limited. Wait a moment and try again.", 429);
+    return new AnalysisError("The analysis engine is temporarily busy. Wait a moment and try again.", 429);
   }
   if (httpStatus === 503 || /high demand|UNAVAILABLE|overloaded|busy right now/i.test(blob)) {
-    return new AnalysisError("Gemini is busy right now. Wait a few seconds and try again.", 503);
+    return new AnalysisError("High demand right now. Please wait a few seconds and try again.", 503);
   }
   if (
     httpStatus === 401 ||
@@ -358,13 +358,13 @@ function explainGeminiError(httpStatus: number, blob: string, msg: string): Anal
     /API_KEY_INVALID|API key not valid|PERMISSION_DENIED/i.test(blob)
   ) {
     return new AnalysisError(
-      "Gemini rejected the API key. Check GEMINI_API_KEY in Vercel / .env.local.",
+      "Analysis engine authentication failed. Please contact support.",
       502,
       msg.slice(0, 280) || undefined,
     );
   }
   return new AnalysisError(
-    "The Gemini API returned an error.",
+    "The analysis engine returned an unexpected error. Please try again.",
     httpStatus >= 400 ? httpStatus : 502,
     msg.slice(0, 280) || undefined,
   );
@@ -377,7 +377,7 @@ function unwrapGemini(
   const candidates = Array.isArray(response.candidates) ? response.candidates : [];
   const candidate = candidates[0] as Record<string, unknown> | undefined;
   if (!candidate) {
-    throw new AnalysisError("The Gemini API returned no candidates.", 502);
+    throw new AnalysisError("The analysis engine returned an empty response. Please try again.", 502);
   }
 
   const finish = String(candidate.finishReason ?? candidate.finish_reason ?? "");

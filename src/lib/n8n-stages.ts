@@ -6,14 +6,14 @@ import { useEffect, useState } from "react";
  * request returns, then the quality layer completes.
  */
 export const N8N_STAGES = [
-  { id: "validate", label: "Validate input", short: "Validate", detail: "Shape, size, types" },
-  { id: "normalise", label: "Parse transcript", short: "Parse", detail: "Turns and speaker roster" },
-  { id: "build", label: "Build Gemini request", short: "Build", detail: "Prompt + JSON schema" },
-  { id: "gemini", label: "Gemini — analyse call", short: "Gemini", detail: "Structured JSON from the model" },
-  { id: "parse", label: "Parse & schema-validate", short: "Schema", detail: "Contract check" },
-  { id: "evidence", label: "Verify evidence", short: "Evidence", detail: "Quotes matched to the transcript" },
-  { id: "kpi", label: "KPI engine", short: "KPIs", detail: "Customer, agent, company, conversation" },
-  { id: "gate", label: "Quality gate", short: "Gate", detail: "Coverage and grounding" },
+  { id: "validate", label: "Input validation", short: "Validate", detail: "Schema & payload checks" },
+  { id: "normalise", label: "Transcript parser", short: "Parse", detail: "Turn segmentation & speaker diarisation" },
+  { id: "build", label: "Pipeline build", short: "Build", detail: "Context assembly & schema binding" },
+  { id: "gemini", label: "NLP engine — inference", short: "Inference", detail: "Multi-pass structured extraction" },
+  { id: "parse", label: "Contract validation", short: "Schema", detail: "Output schema enforcement" },
+  { id: "evidence", label: "Evidence verification", short: "Evidence", detail: "Citation grounding against source" },
+  { id: "kpi", label: "KPI computation", short: "KPIs", detail: "Deterministic metric derivation" },
+  { id: "gate", label: "Quality gate", short: "Gate", detail: "Coverage & grounding threshold" },
 ] as const;
 
 export type N8nStageId = (typeof N8N_STAGES)[number]["id"];

@@ -50,22 +50,22 @@ export function WorkflowTimeline({
   }, [active]);
 
   const headline = !configured
-    ? "Gemini not configured"
+    ? "Engine not configured"
     : live
       ? current
         ? current.label
         : "Analysis running"
       : active >= N8N_STAGES.length
         ? "Analysis complete"
-        : "UI → Gemini";
+        : "UI → Engine";
 
   const sub = !configured
-    ? "Set GEMINI_API_KEY"
+    ? "Configure analysis engine"
     : live && current
       ? current.id === "gemini"
-        ? "Waiting on generateContent…"
+        ? "Running inference pipeline…"
         : current.detail
-      : model ?? "UI → Gemini";
+      : "SA Pipeline";
 
   return (
     <div className="border-t border-[var(--hairline)] bg-[var(--surface-1)]">
